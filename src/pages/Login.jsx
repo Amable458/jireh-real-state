@@ -73,15 +73,8 @@ export default function Login() {
               {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
-          <div className="mt-5 pt-4 border-t border-slate-100 text-xs text-slate-500">
-            <p className="font-semibold text-slate-600 mb-1">Usuarios por defecto:</p>
-            <ul className="space-y-0.5">
-              <li>• <span className="font-mono">superadmin</span> / SuperAdmin2024!</li>
-              <li>• <span className="font-mono">admin</span> / Admin2024!</li>
-              <li>• <span className="font-mono">usuario1</span> / User2024!</li>
-            </ul>
-          </div>
         </div>
+        <p className="text-center text-xs text-brand-200 mt-4">© {new Date().getFullYear()} Jireh Real State</p>
       </div>
     </div>
   );
