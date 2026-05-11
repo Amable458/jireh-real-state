@@ -17,9 +17,9 @@ function StatCard({ icon: Icon, label, value, color, sub }) {
         <Icon size={22} className="text-white" />
       </div>
       <div className="min-w-0">
-        <p className="text-xs uppercase font-semibold text-slate-500">{label}</p>
-        <p className="text-xl font-bold text-slate-800 truncate">{value}</p>
-        {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+        <p className="text-xs uppercase font-semibold text-ink-500">{label}</p>
+        <p className="text-xl font-bold text-ink-800 truncate">{value}</p>
+        {sub && <p className="text-xs text-ink-500 mt-0.5">{sub}</p>}
       </div>
     </div>
   );
@@ -49,7 +49,7 @@ export default function Dashboard() {
     })();
   }, [year, month]);
 
-  if (!totals) return <div className="text-slate-400">Cargando...</div>;
+  if (!totals) return <div className="text-ink-400">Cargando...</div>;
   const negative = totals.surplus < 0;
   const chartData = series.map((s) => ({ name: monthName(s.month).slice(0, 3), Ingresos: s.income, Gastos: s.expenses, Excedente: s.surplus }));
 
@@ -74,13 +74,13 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <StatCard icon={TrendingUp} label="Ingresos totales" value={fmtMoney(totals.totalIncome)} color="bg-emerald-500" sub={`Rentas: ${fmtMoney(totals.rentalsPaid + totals.rentalsPartial)}`} />
         <StatCard icon={TrendingDown} label="Gastos totales" value={fmtMoney(totals.expensesAll)} color="bg-red-500" sub={`Pagados: ${fmtMoney(totals.expensesPaid)}`} />
-        <StatCard icon={Wallet} label="Balance neto" value={fmtMoney(totals.surplus)} color={negative ? 'bg-red-500' : 'bg-brand-700'} sub={negative ? 'Déficit del mes' : 'Excedente disponible'} />
+        <StatCard icon={Wallet} label="Balance neto" value={fmtMoney(totals.surplus)} color={negative ? 'bg-red-500' : 'bg-ink-900'} sub={negative ? 'Déficit del mes' : 'Excedente disponible'} />
         <StatCard icon={FileText} label="Comisiones" value={fmtMoney(totals.commissions)} color="bg-amber-500" sub={`${totals.sales.length} venta(s)`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
         <div className="card card-body lg:col-span-2">
-          <h3 className="font-semibold text-slate-700 mb-3">Comparativa mensual del año {year}</h3>
+          <h3 className="font-semibold text-ink-700 mb-3">Comparativa mensual del año {year}</h3>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
               <BarChart data={chartData}>
@@ -98,16 +98,16 @@ export default function Dashboard() {
         </div>
 
         <div className="card card-body">
-          <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-ink-700 mb-3 flex items-center gap-2">
             <Bell size={18} className="text-amber-500" /> Alertas
           </h3>
           <div className="space-y-3 text-sm">
             <div>
-              <p className="font-semibold text-slate-600 mb-1 flex items-center gap-1">
+              <p className="font-semibold text-ink-600 mb-1 flex items-center gap-1">
                 <Calendar size={14} /> Contratos por vencer (30 días)
               </p>
               {contractAlerts.length === 0
-                ? <p className="text-xs text-slate-400">Ninguno</p>
+                ? <p className="text-xs text-ink-400">Ninguno</p>
                 : (
                   <ul className="space-y-1">
                     {contractAlerts.map((c) => (
@@ -120,11 +120,11 @@ export default function Dashboard() {
                 )}
             </div>
             <div>
-              <p className="font-semibold text-slate-600 mb-1 flex items-center gap-1">
+              <p className="font-semibold text-ink-600 mb-1 flex items-center gap-1">
                 <AlertTriangle size={14} /> Rentas pendientes este mes
               </p>
               {pendingRentals.length === 0
-                ? <p className="text-xs text-slate-400">Sin pendientes</p>
+                ? <p className="text-xs text-ink-400">Sin pendientes</p>
                 : (
                   <ul className="space-y-1">
                     {pendingRentals.map((r) => (

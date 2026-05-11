@@ -128,15 +128,15 @@ export default function Rentals() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Pagado</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Pagado</p>
           <p className="text-xl font-bold text-emerald-700">{fmtMoney(totals.paid)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Parcial</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Parcial</p>
           <p className="text-xl font-bold text-amber-700">{fmtMoney(totals.partial)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Pendiente</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Pendiente</p>
           <p className="text-xl font-bold text-red-700">{fmtMoney(totals.pending)}</p>
         </div>
       </div>

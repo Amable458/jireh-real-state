@@ -188,15 +188,15 @@ export default function Properties() {
       />
 
       <div className="card card-body">
-        <div className="flex items-center justify-between border-b border-slate-200 mb-4">
+        <div className="flex items-center justify-between border-b border-ink-200 mb-4">
           <div className="flex">
-            <button onClick={() => setTab('properties')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'properties' ? 'border-brand-700 text-brand-700' : 'border-transparent text-slate-500'}`}>
+            <button onClick={() => setTab('properties')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'properties' ? 'border-ink-900 text-ink-900' : 'border-transparent text-ink-500'}`}>
               <Building2 size={14} className="inline mr-1" /> Propiedades ({properties.length})
             </button>
-            <button onClick={() => setTab('tenants')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'tenants' ? 'border-brand-700 text-brand-700' : 'border-transparent text-slate-500'}`}>
+            <button onClick={() => setTab('tenants')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'tenants' ? 'border-ink-900 text-ink-900' : 'border-transparent text-ink-500'}`}>
               <Users size={14} className="inline mr-1" /> Inquilinos ({tenants.length})
             </button>
-            <button onClick={() => setTab('agents')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'agents' ? 'border-brand-700 text-brand-700' : 'border-transparent text-slate-500'}`}>
+            <button onClick={() => setTab('agents')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'agents' ? 'border-ink-900 text-ink-900' : 'border-transparent text-ink-500'}`}>
               <UserCheck size={14} className="inline mr-1" /> Agentes ({agents.length})
             </button>
           </div>
@@ -295,7 +295,7 @@ export default function Properties() {
           <div><label className="label">Email</label><input type="email" className="input" value={aForm.email} onChange={(e) => setAForm({ ...aForm, email: e.target.value })} /></div>
           <div><label className="label">Comisión por defecto (%)</label><input type="number" step="0.01" className="input" value={aForm.commission} onChange={(e) => setAForm({ ...aForm, commission: e.target.value })} placeholder="ej. 5" /></div>
           <div className="flex items-end">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-ink-700">
               <input type="checkbox" checked={!!aForm.active} onChange={(e) => setAForm({ ...aForm, active: e.target.checked ? 1 : 0 })} />
               Agente activo (aparecerá en formularios de renta y venta)
             </label>

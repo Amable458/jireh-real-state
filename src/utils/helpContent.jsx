@@ -1,6 +1,6 @@
 const Section = ({ title, children }) => (
   <div>
-    <h4 className="font-semibold text-slate-800 mb-1">{title}</h4>
+    <h4 className="font-semibold text-ink-800 mb-1">{title}</h4>
     <div className="space-y-1.5">{children}</div>
   </div>
 );

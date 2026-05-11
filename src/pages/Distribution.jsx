@@ -96,7 +96,7 @@ export default function Distribution() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="card card-body">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-slate-700">Configuración de categorías</h3>
+            <h3 className="font-semibold text-ink-700">Configuración de categorías</h3>
             {canEdit && (
               <button className="btn-secondary text-xs py-1" onClick={addCategory}>
                 <Plus size={14} /> Añadir
@@ -108,11 +108,11 @@ export default function Distribution() {
             {draft.categories.map((c, i) => {
               const isSystem = c.id === SYSTEM_BONUS_ID;
               return (
-                <div key={c.id} className={`p-3 rounded-lg border ${isSystem ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+                <div key={c.id} className={`p-3 rounded-lg border ${isSystem ? 'bg-red-50/50 border-red-200' : 'bg-ink-50 border-ink-200'}`}>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
                     {isSystem ? (
-                      <div className="flex-1 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                      <div className="flex-1 flex items-center gap-1.5 text-sm font-semibold text-ink-700">
                         {c.name}
                         <Lock size={12} className="text-red-600" />
                         <span className="text-xs text-red-700 font-normal">(sistema, ligado a Bonificaciones)</span>
@@ -135,7 +135,7 @@ export default function Distribution() {
                         disabled={!canEdit}
                         onChange={(e) => updatePercent(i, e.target.value)}
                       />
-                      <span className="text-sm font-semibold text-slate-600">%</span>
+                      <span className="text-sm font-semibold text-ink-600">%</span>
                     </div>
                     {canEdit && !isSystem && (
                       <button onClick={() => setDeleteIdx(i)} className="btn-ghost p-1 text-red-600" title="Eliminar">
@@ -147,7 +147,7 @@ export default function Distribution() {
                     type="range" min="0" max="100" step="1" disabled={!canEdit}
                     value={c.percent || 0}
                     onChange={(e) => updatePercent(i, e.target.value)}
-                    className="w-full accent-brand-700"
+                    className="w-full accent-brand-500"
                   />
                 </div>
               );
@@ -169,11 +169,11 @@ export default function Distribution() {
               {msg && <span className="text-sm text-emerald-700">{msg}</span>}
             </div>
           )}
-          {!canEdit && <p className="mt-3 text-xs text-slate-500">Solo SuperAdmin / Admin pueden modificar la configuración.</p>}
+          {!canEdit && <p className="mt-3 text-xs text-ink-500">Solo SuperAdmin / Admin pueden modificar la configuración.</p>}
         </div>
 
         <div className="card card-body">
-          <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-ink-700 mb-3 flex items-center gap-2">
             <PieIcon size={18} /> Aplicación a {monthName(month)} {year}
           </h3>
           <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
@@ -186,7 +186,7 @@ export default function Distribution() {
               <div className="font-bold text-red-800">{fmtMoney(totals.expensesAll)}</div>
             </div>
             <div className={`${totals.surplus >= 0 ? 'bg-blue-50' : 'bg-red-100'} rounded-lg p-3`}>
-              <div className="text-xs text-slate-700">Excedente</div>
+              <div className="text-xs text-ink-700">Excedente</div>
               <div className={`font-bold ${totals.surplus >= 0 ? 'text-blue-800' : 'text-red-800'}`}>{fmtMoney(totals.surplus)}</div>
             </div>
           </div>
@@ -214,11 +214,11 @@ export default function Distribution() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
                 {distribution.map((d, i) => (
-                  <div key={d.id} className="flex justify-between items-center bg-slate-50 rounded px-3 py-2">
+                  <div key={d.id} className="flex justify-between items-center bg-ink-50 rounded px-3 py-2">
                     <span className="flex items-center gap-2 truncate">
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
                       <span className="truncate">{d.name}</span>
-                      <span className="text-xs text-slate-400">{d.percent}%</span>
+                      <span className="text-xs text-ink-400">{d.percent}%</span>
                     </span>
                     <span className="font-semibold">{fmtMoney(d.amount)}</span>
                   </div>

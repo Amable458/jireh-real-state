@@ -128,19 +128,19 @@ export default function Expenses() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Total mensual</p>
-          <p className="text-xl font-bold text-slate-800">{fmtMoney(totals.monthly)}</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Total mensual</p>
+          <p className="text-xl font-bold text-ink-800">{fmtMoney(totals.monthly)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Quincena 1</p>
-          <p className="text-xl font-bold text-brand-700">{fmtMoney(totals.q1)}</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Quincena 1</p>
+          <p className="text-xl font-bold text-ink-900">{fmtMoney(totals.q1)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Quincena 2</p>
-          <p className="text-xl font-bold text-brand-700">{fmtMoney(totals.q2)}</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Quincena 2</p>
+          <p className="text-xl font-bold text-ink-900">{fmtMoney(totals.q2)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Pendiente</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Pendiente</p>
           <p className="text-xl font-bold text-red-700">{fmtMoney(totals.pending)}</p>
         </div>
       </div>
@@ -187,9 +187,9 @@ export default function Expenses() {
             </select>
           </div>
           <div className="flex items-end">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-ink-700">
               <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked ? 1 : 0 })} />
-              <Copy size={14} className="text-slate-500" /> Gasto recurrente (auto-copiar al siguiente mes)
+              <Copy size={14} className="text-ink-500" /> Gasto recurrente (auto-copiar al siguiente mes)
             </label>
           </div>
           <div className="md:col-span-2">

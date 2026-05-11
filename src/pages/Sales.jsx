@@ -107,16 +107,16 @@ export default function Sales() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Total ventas</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Total ventas</p>
           <p className="text-xl font-bold text-emerald-700">{fmtMoney(totals.price)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Comisiones</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Comisiones</p>
           <p className="text-xl font-bold text-amber-700">{fmtMoney(totals.comm)}</p>
         </div>
         <div className="card card-body">
-          <p className="text-xs text-slate-500 uppercase font-semibold">Cierres</p>
-          <p className="text-xl font-bold text-slate-800">{totals.count}</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold">Cierres</p>
+          <p className="text-xl font-bold text-ink-800">{totals.count}</p>
         </div>
       </div>
 

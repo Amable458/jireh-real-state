@@ -19,7 +19,7 @@ export default function HelpButton({ content, title = 'Guía del módulo' }) {
         title={title} size="lg"
         footer={<button className="btn-primary" onClick={() => setOpen(false)}>Entendido</button>}
       >
-        <div className="prose-help text-sm text-slate-700 space-y-3">
+        <div className="prose-help text-sm text-ink-700 space-y-3">
           {content}
         </div>
       </Modal>

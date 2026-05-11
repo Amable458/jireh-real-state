@@ -76,8 +76,8 @@ export default function Reports() {
         fmtMoney(m.totals.commissions)
       ]),
       foot: [['TOTAL', fmtMoney(data.totalIncome), fmtMoney(data.totalExpenses), fmtMoney(data.totalSurplus), '']],
-      headStyles: { fillColor: [29, 78, 216] },
-      footStyles: { fillColor: [226, 232, 240], textColor: 30 }
+      headStyles: { fillColor: [245, 197, 24], textColor: [26, 31, 44] },
+      footStyles: { fillColor: [238, 240, 244], textColor: [26, 31, 44] }
     });
 
     for (const m of data.months) {
@@ -160,8 +160,8 @@ export default function Reports() {
 
       <div className="card card-body mb-5">
         <div className="flex items-center gap-2 mb-4">
-          <Filter size={16} className="text-slate-500" />
-          <span className="font-semibold text-slate-700">Filtros</span>
+          <Filter size={16} className="text-ink-500" />
+          <span className="font-semibold text-ink-700">Filtros</span>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -220,13 +220,13 @@ export default function Reports() {
       {data && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="card card-body"><p className="text-xs text-slate-500 uppercase font-semibold">Ingresos</p><p className="text-xl font-bold text-emerald-700">{fmtMoney(data.totalIncome)}</p></div>
-            <div className="card card-body"><p className="text-xs text-slate-500 uppercase font-semibold">Gastos</p><p className="text-xl font-bold text-red-700">{fmtMoney(data.totalExpenses)}</p></div>
-            <div className="card card-body"><p className="text-xs text-slate-500 uppercase font-semibold">Excedente</p><p className={`text-xl font-bold ${data.totalSurplus >= 0 ? 'text-brand-700' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Ingresos</p><p className="text-xl font-bold text-emerald-700">{fmtMoney(data.totalIncome)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Gastos</p><p className="text-xl font-bold text-red-700">{fmtMoney(data.totalExpenses)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Excedente</p><p className={`text-xl font-bold ${data.totalSurplus >= 0 ? 'text-ink-900' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</p></div>
           </div>
 
           <div className="card card-body">
-            <h3 className="font-semibold text-slate-700 mb-3">Detalle por mes — {periodLabel()}</h3>
+            <h3 className="font-semibold text-ink-700 mb-3">Detalle por mes — {periodLabel()}</h3>
             <div className="table-wrap">
               <table className="table">
                 <thead><tr><th>Mes</th><th className="text-right">Ingresos</th><th className="text-right">Gastos</th><th className="text-right">Excedente</th><th className="text-right">Comisiones</th><th className="text-right">Pool bonos</th></tr></thead>

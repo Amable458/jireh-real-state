@@ -5,43 +5,45 @@
 html, body, #root { height: 100%; }
 body {
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: #f1f5f9;
-  color: #0f172a;
+  background-color: #f7f8fa;
+  color: #1a1f2c;
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  .btn-primary { @apply btn bg-brand-700 text-white hover:bg-brand-800 focus:ring-brand-500; }
-  .btn-secondary { @apply btn bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 focus:ring-brand-500; }
-  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500; }
-  .btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500; }
-  .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100 focus:ring-brand-500; }
+  /* Primario: amarillo de marca con texto oscuro */
+  .btn-primary   { @apply btn bg-brand-500 text-ink-900 hover:bg-brand-400 focus:ring-brand-500; }
+  .btn-secondary { @apply btn bg-white border border-ink-200 text-ink-700 hover:bg-ink-50 focus:ring-brand-500; }
+  .btn-dark      { @apply btn bg-ink-900 text-white hover:bg-ink-800 focus:ring-ink-500; }
+  .btn-danger    { @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500; }
+  .btn-success   { @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500; }
+  .btn-ghost     { @apply btn text-ink-600 hover:bg-ink-100 focus:ring-brand-500; }
 
   .input {
-    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none disabled:bg-slate-100;
+    @apply block w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none disabled:bg-ink-50;
   }
-  .label { @apply block text-sm font-medium text-slate-700 mb-1; }
-  .card { @apply bg-white rounded-xl shadow-sm border border-slate-200; }
+  .label { @apply block text-sm font-medium text-ink-700 mb-1; }
+  .card  { @apply bg-white rounded-xl shadow-card border border-ink-100; }
   .card-body { @apply p-5; }
 
   .badge { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium; }
-  .badge-success { @apply badge bg-emerald-100 text-emerald-700; }
-  .badge-warning { @apply badge bg-amber-100 text-amber-700; }
-  .badge-danger { @apply badge bg-red-100 text-red-700; }
-  .badge-info { @apply badge bg-blue-100 text-blue-700; }
-  .badge-slate { @apply badge bg-slate-100 text-slate-700; }
+  .badge-success { @apply badge bg-emerald-100 text-emerald-800; }
+  .badge-warning { @apply badge bg-amber-100 text-amber-800; }
+  .badge-danger  { @apply badge bg-red-100 text-red-700; }
+  .badge-info    { @apply badge bg-ink-100 text-ink-700; }
+  .badge-slate   { @apply badge bg-ink-100 text-ink-600; }
 
-  .table-wrap { @apply overflow-x-auto rounded-lg border border-slate-200; }
+  .table-wrap { @apply overflow-x-auto rounded-lg border border-ink-100; }
   .table { @apply w-full text-sm; }
-  .table thead { @apply bg-slate-50 text-slate-600 text-xs uppercase tracking-wide; }
+  .table thead { @apply bg-ink-50 text-ink-500 text-xs uppercase tracking-wide; }
   .table th { @apply text-left font-semibold px-4 py-3 cursor-pointer select-none; }
-  .table td { @apply px-4 py-3 border-t border-slate-100; }
-  .table tbody tr:hover { @apply bg-slate-50; }
+  .table td { @apply px-4 py-3 border-t border-ink-100 text-ink-700; }
+  .table tbody tr:hover { @apply bg-ink-50/60; }
 }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-track { background: #eef0f4; }
+::-webkit-scrollbar-thumb { background: #b2b9c6; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #7e8799; }

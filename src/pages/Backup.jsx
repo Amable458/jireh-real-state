@@ -98,16 +98,16 @@ export default function Backup() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="card card-body">
-          <Database className="text-brand-700 mb-2" size={28} />
-          <h3 className="font-semibold text-slate-800 text-lg mb-1">Exportar respaldo</h3>
-          <p className="text-sm text-slate-500 mb-4">Descarga un archivo JSON con toda la información: usuarios, ingresos, gastos, propiedades, inquilinos, configuración y bitácora.</p>
+          <Database className="text-ink-900 mb-2" size={28} />
+          <h3 className="font-semibold text-ink-800 text-lg mb-1">Exportar respaldo</h3>
+          <p className="text-sm text-ink-500 mb-4">Descarga un archivo JSON con toda la información: usuarios, ingresos, gastos, propiedades, inquilinos, configuración y bitácora.</p>
           <button className="btn-primary" onClick={onExport}><Download size={16} /> Descargar respaldo</button>
         </div>
 
         <div className="card card-body">
           <Upload className="text-amber-600 mb-2" size={28} />
-          <h3 className="font-semibold text-slate-800 text-lg mb-1">Importar / Restaurar</h3>
-          <p className="text-sm text-slate-500 mb-2">Restaura un archivo de respaldo previo.</p>
+          <h3 className="font-semibold text-ink-800 text-lg mb-1">Importar / Restaurar</h3>
+          <p className="text-sm text-ink-500 mb-2">Restaura un archivo de respaldo previo.</p>
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg p-3 flex items-start gap-2 mb-4">
             <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
             <span><b>Advertencia:</b> esta acción reemplaza completamente los datos actuales. Considere exportar antes de importar.</span>
@@ -118,8 +118,8 @@ export default function Backup() {
 
         <div className="card card-body">
           <Sparkles className="text-emerald-600 mb-2" size={28} />
-          <h3 className="font-semibold text-slate-800 text-lg mb-1">Cargar datos de ejemplo</h3>
-          <p className="text-sm text-slate-500 mb-2">Genera un escenario realista con propiedades, inquilinos, agentes adicionales, rentas, ventas y gastos a lo largo de 6 meses para explorar todos los módulos.</p>
+          <h3 className="font-semibold text-ink-800 text-lg mb-1">Cargar datos de ejemplo</h3>
+          <p className="text-sm text-ink-500 mb-2">Genera un escenario realista con propiedades, inquilinos, agentes adicionales, rentas, ventas y gastos a lo largo de 6 meses para explorar todos los módulos.</p>
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg p-3 flex items-start gap-2 mb-4">
             <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
             <span><b>Atención:</b> elimina rentas, ventas, gastos, propiedades, inquilinos y bitácora actuales (los usuarios y agentes existentes se conservan).</span>
@@ -131,8 +131,8 @@ export default function Backup() {
 
         <div className="card card-body">
           <Trash2 className="text-red-600 mb-2" size={28} />
-          <h3 className="font-semibold text-slate-800 text-lg mb-1">Limpiar datos</h3>
-          <p className="text-sm text-slate-500 mb-2">Elimina todos los datos transaccionales para empezar desde cero. Útil para borrar el escenario de ejemplo o limpiar pruebas.</p>
+          <h3 className="font-semibold text-ink-800 text-lg mb-1">Limpiar datos</h3>
+          <p className="text-sm text-ink-500 mb-2">Elimina todos los datos transaccionales para empezar desde cero. Útil para borrar el escenario de ejemplo o limpiar pruebas.</p>
           <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3 flex items-start gap-2 mb-4">
             <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
             <span><b>Se eliminarán:</b> rentas, ventas, gastos, propiedades, inquilinos, distribuciones y bitácora. Los <b>usuarios y agentes</b> se conservan, así como la <b>configuración de distribución</b>.</span>

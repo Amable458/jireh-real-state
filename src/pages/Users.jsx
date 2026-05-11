@@ -112,19 +112,19 @@ export default function Users() {
       </div>
 
       <div className="card card-body">
-        <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2"><ShieldAlert size={18} /> Bitácora de actividad reciente</h3>
+        <h3 className="font-semibold text-ink-700 mb-3 flex items-center gap-2"><ShieldAlert size={18} /> Bitácora de actividad reciente</h3>
         <div className="table-wrap max-h-96 overflow-y-auto">
           <table className="table">
             <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
             <tbody>
               {logs.length === 0 ? (
-                <tr><td colSpan={4} className="text-center text-slate-400 py-6">Sin registros</td></tr>
+                <tr><td colSpan={4} className="text-center text-ink-400 py-6">Sin registros</td></tr>
               ) : logs.map((l) => (
                 <tr key={l.id}>
                   <td className="text-xs whitespace-nowrap">{fmtDateTime(l.ts)}</td>
                   <td className="font-mono text-xs">{l.username}</td>
                   <td><span className="badge-info">{l.action}</span></td>
-                  <td className="text-xs text-slate-500">{l.detail}</td>
+                  <td className="text-xs text-ink-500">{l.detail}</td>
                 </tr>
               ))}
             </tbody>

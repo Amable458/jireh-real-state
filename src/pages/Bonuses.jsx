@@ -43,16 +43,16 @@ export default function Bonuses() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
           <div className="card card-body">
-            <div className="flex items-center gap-2 text-xs text-slate-500 uppercase font-semibold"><Award size={14} /> Pool total</div>
+            <div className="flex items-center gap-2 text-xs text-ink-500 uppercase font-semibold"><Award size={14} /> Pool total</div>
             <p className="text-2xl font-bold text-emerald-700">{fmtMoney(data.pool)}</p>
           </div>
           <div className="card card-body">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Rentas cerradas</p>
-            <p className="text-2xl font-bold text-brand-700">{data.totalRentals}</p>
+            <p className="text-xs text-ink-500 uppercase font-semibold">Rentas cerradas</p>
+            <p className="text-2xl font-bold text-ink-900">{data.totalRentals}</p>
           </div>
           <div className="card card-body">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Agentes con cierres</p>
-            <p className="text-2xl font-bold text-slate-800">{data.byAgent.length}</p>
+            <p className="text-xs text-ink-500 uppercase font-semibold">Agentes con cierres</p>
+            <p className="text-2xl font-bold text-ink-800">{data.byAgent.length}</p>
           </div>
         </div>
       )}

@@ -47,7 +47,7 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
     <div className="space-y-3">
       {searchable && (
         <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+          <Search className="absolute left-3 top-2.5 text-ink-400" size={16} />
           <input
             value={q}
             onChange={(e) => { setQ(e.target.value); setPage(1); }}
@@ -72,7 +72,7 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
           </thead>
           <tbody>
             {slice.length === 0 ? (
-              <tr><td colSpan={columns.length} className="text-center text-slate-400 py-8">{emptyText}</td></tr>
+              <tr><td colSpan={columns.length} className="text-center text-ink-400 py-8">{emptyText}</td></tr>
             ) : slice.map((r, i) => (
               <tr key={r.id ?? i}>
                 {columns.map((c) => (
@@ -85,7 +85,7 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between text-xs text-slate-500">
+      <div className="flex items-center justify-between text-xs text-ink-500">
         <span>{sorted.length} registro(s)</span>
         <div className="flex items-center gap-2">
           <button disabled={safePage === 1} onClick={() => setPage(safePage - 1)} className="btn-ghost px-2 py-1 text-xs disabled:opacity-40">Anterior</button>
