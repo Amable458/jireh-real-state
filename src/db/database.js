@@ -17,36 +17,45 @@ db.version(1).stores({
   settings: 'key'
 });
 
+// Usuarios por defecto (centralizados para auto-reparación)
+export const DEFAULT_USERS = [
+  { username: 'superadmin', password: 'SuperAdmin2024!', role: 'SuperAdmin', fullName: 'Super Administrador' },
+  { username: 'admin',      password: 'Admin2024!',      role: 'Admin',      fullName: 'Administrador' },
+  { username: 'usuario1',   password: 'User2024!',       role: 'Operativo',  fullName: 'Usuario Operativo' }
+];
+
+// Asegura que los usuarios por defecto existan (idempotente). Devuelve los creados.
+export async function ensureDefaultUsers() {
+  const created = [];
+  for (const u of DEFAULT_USERS) {
+    const existing = await db.users.where('username').equalsIgnoreCase(u.username).first();
+    if (!existing) {
+      const passHash = await sha256(u.password);
+      await db.users.add({
+        username: u.username,
+        passHash,
+        role: u.role,
+        fullName: u.fullName,
+        blocked: 0,
+        createdAt: new Date().toISOString()
+      });
+      created.push(u.username);
+    }
+  }
+  return created;
+}
+
 export async function initDB() {
-  await db.open();
-  const userCount = await db.users.count();
-  if (userCount === 0) {
-    await db.users.bulkAdd([
-      {
-        username: 'superadmin',
-        passHash: await sha256('SuperAdmin2024!'),
-        role: 'SuperAdmin',
-        fullName: 'Super Administrador',
-        blocked: 0,
-        createdAt: new Date().toISOString()
-      },
-      {
-        username: 'admin',
-        passHash: await sha256('Admin2024!'),
-        role: 'Admin',
-        fullName: 'Administrador',
-        blocked: 0,
-        createdAt: new Date().toISOString()
-      },
-      {
-        username: 'usuario1',
-        passHash: await sha256('User2024!'),
-        role: 'Operativo',
-        fullName: 'Usuario Operativo',
-        blocked: 0,
-        createdAt: new Date().toISOString()
-      }
-    ]);
+  try {
+    await db.open();
+  } catch (err) {
+    // Diagnóstico claro si IndexedDB no está disponible (Safari privado, ITP, etc.)
+    console.error('[Jireh] No se pudo abrir IndexedDB:', err);
+    throw new Error('Tu navegador bloqueó el almacenamiento local (IndexedDB). Intenta en modo normal (no privado) o con otro navegador.');
+  }
+  const created = await ensureDefaultUsers();
+  if (created.length) {
+    console.info('[Jireh] Usuarios por defecto creados:', created.join(', '));
   }
 
   const cfg = await db.distributionConfig.get('default');
