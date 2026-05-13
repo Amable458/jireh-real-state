@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react';
-import { Download, Upload, AlertTriangle, Database, Sparkles, Trash2 } from 'lucide-react';
+import { Download, Upload, AlertTriangle, Database, Sparkles, Trash2, ShieldCheck, CheckCircle2, XCircle, Info, Wrench } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
-import { ConfirmModal } from '../components/Modal.jsx';
+import Modal, { ConfirmModal } from '../components/Modal.jsx';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { exportAll, importAll, logActivity } from '../db/database.js';
 import { useAuth } from '../store/auth.js';
 import { loadSampleData, clearTransactionalData } from '../utils/sampleData.js';
+import { validateDB, repairOrphans } from '../utils/validateDB.js';
 
 export default function Backup() {
   const { user } = useAuth();
@@ -18,6 +19,9 @@ export default function Backup() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [msg, setMsg] = useState('');
+  const [reportOpen, setReportOpen] = useState(false);
+  const [report, setReport] = useState(null);
+  const [validating, setValidating] = useState(false);
 
   const onExport = async () => {
     const data = await exportAll();
@@ -62,6 +66,34 @@ export default function Backup() {
     }
   };
 
+  const runValidation = async () => {
+    setValidating(true);
+    try {
+      const r = await validateDB();
+      setReport(r);
+      setReportOpen(true);
+      await logActivity(user.sub, user.username, 'db.validate', `errors=${r.issues.filter((i)=>i.level==='error').length} warnings=${r.issues.filter((i)=>i.level==='warning').length}`);
+    } catch (err) {
+      setMsg('Error en validación: ' + err.message);
+      setTimeout(() => setMsg(''), 4000);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const doRepair = async () => {
+    try {
+      const { fixed } = await repairOrphans();
+      await logActivity(user.sub, user.username, 'db.repair', `fixed=${fixed}`);
+      setMsg(`✓ Reparación completada. Referencias huérfanas corregidas: ${fixed}.`);
+      setReportOpen(false);
+      setTimeout(() => setMsg(''), 4000);
+    } catch (err) {
+      setMsg('Error en reparación: ' + err.message);
+      setTimeout(() => setMsg(''), 4000);
+    }
+  };
+
   const doClear = async () => {
     setClearing(true);
     try {
@@ -95,6 +127,15 @@ export default function Backup() {
         subtitle="Exportar e importar todos los datos del sistema en formato JSON"
         actions={<HelpButton content={HELP.backup} />}
       />
+
+      {/* Aviso de arquitectura local */}
+      <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
+        <Info size={20} className="text-amber-700 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-amber-900">
+          <p className="font-semibold mb-1">Almacenamiento local por dispositivo</p>
+          <p>Este sistema guarda los datos en <b>IndexedDB</b> del navegador. Cada equipo/navegador tiene su propia copia y <b>no se sincroniza automáticamente</b> con otros. Para usar los mismos datos en otro equipo, exporta el respaldo aquí e impórtalo en el otro dispositivo. Si necesita sincronización multi-usuario en tiempo real, requiere migrar a un backend (Supabase / Vercel Postgres).</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="card card-body">
@@ -141,9 +182,103 @@ export default function Backup() {
             <Trash2 size={16} /> {clearing ? 'Limpiando...' : 'Limpiar datos'}
           </button>
         </div>
+
+        <div className="card card-body md:col-span-2">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="text-emerald-600 flex-shrink-0" size={28} />
+            <div className="flex-1">
+              <h3 className="font-semibold text-ink-800 text-lg mb-1">Validar base de datos</h3>
+              <p className="text-sm text-ink-500 mb-3">Audita la consistencia de los datos en este dispositivo: conteos por tabla, integridad referencial (rentas/ventas apuntando a propiedades, inquilinos o agentes eliminados), validez de montos y períodos, configuración de distribución, usuarios y SuperAdmin activo.</p>
+              <button className="btn-primary" disabled={validating} onClick={runValidation}>
+                <ShieldCheck size={16} /> {validating ? 'Validando...' : 'Ejecutar validación'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {msg && <div className="mt-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-lg px-3 py-2">{msg}</div>}
+
+      <Modal
+        open={reportOpen} onClose={() => setReportOpen(false)}
+        title="Reporte de validación" size="lg"
+        footer={<>
+          {report && report.issues.some((i) => i.message.includes('huérfan') || i.message.includes('referencian')) && (
+            <button className="btn-secondary" onClick={doRepair}>
+              <Wrench size={14} /> Reparar referencias huérfanas
+            </button>
+          )}
+          <button className="btn-primary" onClick={() => setReportOpen(false)}>Cerrar</button>
+        </>}
+      >
+        {report && (
+          <div className="text-sm space-y-4">
+            <div className={`rounded-lg p-3 flex items-start gap-2 ${report.ok ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+              {report.ok
+                ? <CheckCircle2 className="text-emerald-600 mt-0.5 flex-shrink-0" size={18} />
+                : <XCircle className="text-red-600 mt-0.5 flex-shrink-0" size={18} />}
+              <div>
+                <p className={`font-semibold ${report.ok ? 'text-emerald-800' : 'text-red-800'}`}>
+                  {report.ok ? 'Base de datos consistente' : 'Se detectaron errores críticos'}
+                </p>
+                <p className={`text-xs ${report.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {report.issues.filter((i)=>i.level==='error').length} errores · {report.issues.filter((i)=>i.level==='warning').length} advertencias · {report.issues.filter((i)=>i.level==='info').length} informativos
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-ink-800 mb-2">Conteo por tabla</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                {Object.entries(report.stats).map(([t, n]) => (
+                  <div key={t} className="bg-ink-50 rounded px-2.5 py-1.5 flex justify-between">
+                    <span className="text-ink-600 font-mono">{t}</span>
+                    <span className={`font-semibold ${n < 0 ? 'text-red-600' : 'text-ink-900'}`}>{n}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {report.issues.length > 0 ? (
+              <div>
+                <h4 className="font-semibold text-ink-800 mb-2">Hallazgos</h4>
+                <ul className="space-y-1.5">
+                  {report.issues.map((i, idx) => {
+                    const colors = {
+                      error:   'bg-red-50 border-red-200 text-red-800',
+                      warning: 'bg-amber-50 border-amber-200 text-amber-800',
+                      info:    'bg-ink-50 border-ink-200 text-ink-700'
+                    };
+                    const Icon = i.level === 'error' ? XCircle : i.level === 'warning' ? AlertTriangle : Info;
+                    return (
+                      <li key={idx} className={`flex items-start gap-2 text-xs border rounded-md px-2.5 py-1.5 ${colors[i.level]}`}>
+                        <Icon size={14} className="mt-0.5 flex-shrink-0" />
+                        <div>
+                          <span className="font-mono opacity-70 mr-1">[{i.table}]</span>
+                          <span>{i.message}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-emerald-700">No hay hallazgos. Todo consistente.</p>
+            )}
+
+            {report.storage && (
+              <div className="text-xs text-ink-500">
+                <h4 className="font-semibold text-ink-800 mb-1">Almacenamiento del navegador</h4>
+                <p>Usado: {(report.storage.usage / 1024).toFixed(1)} KB · Cuota: {(report.storage.quota / (1024 * 1024)).toFixed(0)} MB</p>
+              </div>
+            )}
+
+            <p className="text-[11px] text-ink-400">
+              Generado: {new Date(report.timestamp).toLocaleString('es-DO')}
+            </p>
+          </div>
+        )}
+      </Modal>
 
       <ConfirmModal
         open={confirmClear}
