@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../store/auth.js';
 import Logo from '../components/Logo.jsx';
-import { db, ensureDefaultUsers } from '../db/database.js';
+import { rpcUserCount, rpcEnsureDefaultUsers } from '../db/database.js';
 
 export default function Login() {
   const { user, login } = useAuth();
@@ -21,7 +21,7 @@ export default function Login() {
 
   // Diagnóstico al montar
   useEffect(() => {
-    db.users.count().then(setUserCount).catch(() => setUserCount(-1));
+    rpcUserCount().then(setUserCount).catch(() => setUserCount(-1));
   }, []);
 
   if (user) return <Navigate to={loc.state?.from?.pathname || '/dashboard'} replace />;
@@ -44,8 +44,8 @@ export default function Login() {
 
   const reseed = async () => {
     try {
-      const created = await ensureDefaultUsers();
-      const count = await db.users.count();
+      const created = await rpcEnsureDefaultUsers();
+      const count = await rpcUserCount();
       setUserCount(count);
       setHealMsg(created.length
         ? `✓ Usuarios restablecidos (creados: ${created.join(', ')}). Ahora puedes ingresar.`

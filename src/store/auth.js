@@ -1,23 +1,22 @@
 import { create } from 'zustand';
-import { db, logActivity } from '../db/database.js';
-import { sha256, makeToken, decodeToken } from '../utils/crypto.js';
+import { logActivity, rpcLogin } from '../db/database.js';
+import { makeToken, decodeToken } from '../utils/crypto.js';
 
 const STORAGE_KEY = 'jireh_token';
 
+// Usa sessionStorage para sesiones cortas (8h) y localStorage solo si "recordarme"
 const loadFromStorage = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const { token, expires } = JSON.parse(raw);
-    if (Date.now() > expires) {
-      localStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-    const payload = decodeToken(token);
-    return payload ? { token, expires, user: payload } : null;
-  } catch {
-    return null;
+  for (const store of [localStorage, sessionStorage]) {
+    try {
+      const raw = store.getItem(STORAGE_KEY);
+      if (!raw) continue;
+      const { token, expires } = JSON.parse(raw);
+      if (Date.now() > expires) { store.removeItem(STORAGE_KEY); continue; }
+      const payload = decodeToken(token);
+      if (payload) return { token, expires, user: payload, store };
+    } catch { /* ignore */ }
   }
+  return null;
 };
 
 const initial = loadFromStorage();
@@ -28,24 +27,32 @@ export const useAuth = create((set, get) => ({
   expires: initial?.expires || 0,
 
   login: async (username, password, remember) => {
-    const u = await db.users.where('username').equalsIgnoreCase(username.trim()).first();
-    if (!u) return { ok: false, message: 'Usuario no existe' };
-    if (u.blocked) return { ok: false, message: 'Usuario bloqueado' };
-    const hash = await sha256(password);
-    if (hash !== u.passHash) return { ok: false, message: 'Credenciales inválidas' };
+    let row;
+    try {
+      row = await rpcLogin(username.trim(), password);
+    } catch (e) {
+      return { ok: false, message: 'Error de servidor: ' + (e.message || 'desconocido') };
+    }
+    if (!row) return { ok: false, message: 'Credenciales inválidas o usuario bloqueado' };
+
     const ttlMs = remember ? 30 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
     const expires = Date.now() + ttlMs;
     const token = await makeToken({
-      sub: u.id,
-      username: u.username,
-      role: u.role,
-      fullName: u.fullName || u.username,
+      sub: row.id,
+      username: row.username,
+      role: row.role,
+      fullName: row.fullName || row.username,
       exp: Math.floor(expires / 1000)
     });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, expires }));
-    const userInfo = { sub: u.id, username: u.username, role: u.role, fullName: u.fullName || u.username };
+
+    const store = remember ? localStorage : sessionStorage;
+    // Limpia el otro store por si quedó algo
+    (remember ? sessionStorage : localStorage).removeItem(STORAGE_KEY);
+    store.setItem(STORAGE_KEY, JSON.stringify({ token, expires }));
+
+    const userInfo = { sub: row.id, username: row.username, role: row.role, fullName: row.fullName || row.username };
     set({ user: userInfo, token, expires });
-    await logActivity(u.id, u.username, 'login', '');
+    await logActivity(row.id, row.username, 'login', remember ? 'remember=true' : '');
     return { ok: true };
   },
 
@@ -53,6 +60,7 @@ export const useAuth = create((set, get) => ({
     const u = get().user;
     if (u) await logActivity(u.sub, u.username, 'logout', '');
     localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
     set({ user: null, token: null, expires: 0 });
   },
 

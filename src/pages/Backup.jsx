@@ -24,7 +24,7 @@ export default function Backup() {
   const [validating, setValidating] = useState(false);
 
   const onExport = async () => {
-    const data = await exportAll();
+    const data = await exportAll(user.sub);
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -110,7 +110,7 @@ export default function Backup() {
 
   const doImport = async () => {
     try {
-      await importAll(pendingPayload);
+      await importAll(pendingPayload, user.sub);
       await logActivity(user.sub, user.username, 'backup.import', '');
       setMsg('Restauración completada. Recargando...');
       setTimeout(() => window.location.reload(), 1500);

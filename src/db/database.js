@@ -1,5 +1,4 @@
 import { supabase, isConfigured } from './supabaseClient.js';
-import { sha256 } from '../utils/crypto.js';
 
 // Tablas del sistema
 const TABLES = [
@@ -177,45 +176,100 @@ db.tables = TABLES.map((t) => db[t]);
 // USUARIOS POR DEFECTO + INIT
 // =================================================================
 
-export const DEFAULT_USERS = [
-  { username: 'superadmin', password: 'SuperAdmin2024!', role: 'SuperAdmin', fullName: 'Super Administrador' },
-  { username: 'admin',      password: 'Admin2024!',      role: 'Admin',      fullName: 'Administrador' },
-  { username: 'usuario1',   password: 'User2024!',       role: 'Operativo',  fullName: 'Usuario Operativo' }
-];
+// =================================================================
+// AUTH RPCs (server-side, ver supabase/security.sql)
+// =================================================================
 
-export async function ensureDefaultUsers() {
-  if (!isConfigured) return [];
-  const created = [];
-  for (const u of DEFAULT_USERS) {
-    const existing = await db.users.where('username').equalsIgnoreCase(u.username).first();
-    if (!existing) {
-      const passHash = await sha256(u.password);
-      await db.users.add({
-        username: u.username,
-        passHash,
-        role: u.role,
-        fullName: u.fullName,
-        blocked: 0
-      });
-      created.push(u.username);
-    }
-  }
-  return created;
+export async function rpcLogin(username, password) {
+  const { data, error } = await supabase.rpc('auth_login', { p_username: username, p_password: password });
+  if (error) throw error;
+  return Array.isArray(data) && data.length ? data[0] : null;
 }
+
+export async function rpcEnsureDefaultUsers() {
+  const { data, error } = await supabase.rpc('auth_ensure_default_users');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function rpcUserCount() {
+  const { data, error } = await supabase.rpc('auth_user_count');
+  if (error) throw error;
+  return typeof data === 'number' ? data : 0;
+}
+
+export async function rpcListUsers() {
+  const { data, error } = await supabase.rpc('auth_list_users');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function rpcCreateUser(actorId, username, password, role, fullName) {
+  const { data, error } = await supabase.rpc('auth_create_user', {
+    actor_id: actorId, p_username: username, p_password: password,
+    p_role: role, p_full_name: fullName
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function rpcUpdateUser(actorId, targetId, username, fullName, role) {
+  const { error } = await supabase.rpc('auth_update_user', {
+    actor_id: actorId, target_id: targetId,
+    p_username: username, p_full_name: fullName, p_role: role
+  });
+  if (error) throw error;
+}
+
+export async function rpcChangePassword(actorId, targetId, newPassword) {
+  const { error } = await supabase.rpc('auth_change_password', {
+    actor_id: actorId, target_id: targetId, new_password: newPassword
+  });
+  if (error) throw error;
+}
+
+export async function rpcToggleBlock(actorId, targetId) {
+  const { data, error } = await supabase.rpc('auth_toggle_block', {
+    actor_id: actorId, target_id: targetId
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function rpcExportUsers(actorId) {
+  const { data, error } = await supabase.rpc('auth_admin_export_users', { actor_id: actorId });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function rpcImportUsers(actorId, payload) {
+  const { data, error } = await supabase.rpc('auth_admin_import_users', { actor_id: actorId, payload });
+  if (error) throw error;
+  return data || 0;
+}
+
+// Compatibilidad con código existente
+export const DEFAULT_USERS = [
+  { username: 'superadmin', role: 'SuperAdmin' },
+  { username: 'admin',      role: 'Admin' },
+  { username: 'usuario1',   role: 'Operativo' }
+];
+export const ensureDefaultUsers = rpcEnsureDefaultUsers;
 
 export async function initDB() {
   if (!isConfigured) {
     throw new Error('Supabase no está configurado. Falta VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY.');
   }
 
-  // Test conexión y permisos
-  const { error } = await supabase.from('users').select('id', { count: 'exact', head: true });
-  if (error) {
+  // Test conexión vía RPC (no requiere acceso directo a tablas con RLS)
+  try {
+    await rpcUserCount();
+  } catch (error) {
     console.error('[Jireh] Error al conectar con Supabase:', error);
-    throw new Error('No se pudo conectar a Supabase: ' + error.message + '. ¿Ejecutaste el schema.sql?');
+    throw new Error('No se pudo conectar a Supabase: ' + (error.message || 'error desconocido') + '. ¿Ejecutaste schema.sql y security.sql?');
   }
 
-  const created = await ensureDefaultUsers();
+  const created = await rpcEnsureDefaultUsers();
   if (created.length) console.info('[Jireh] Usuarios por defecto creados:', created.join(', '));
 
   // Seed agentes si está vacío
@@ -270,20 +324,32 @@ export async function logActivity(userId, username, action, detail = '') {
 // EXPORT / IMPORT
 // =================================================================
 
-export async function exportAll() {
+// actorId: id del SuperAdmin que invoca (necesario para acceder a users con RLS)
+export async function exportAll(actorId) {
   const out = { exportedAt: new Date().toISOString(), version: 2, data: {} };
-  for (const t of TABLES) out.data[t] = await db[t].toArray();
+  for (const t of TABLES) {
+    if (t === 'users') {
+      out.data.users = actorId ? await rpcExportUsers(actorId) : [];
+    } else {
+      out.data[t] = await db[t].toArray();
+    }
+  }
   return out;
 }
 
-export async function importAll(payload) {
+export async function importAll(payload, actorId) {
   if (!payload?.data) throw new Error('Archivo inválido');
   for (const t of TABLES) {
-    if (payload.data[t] !== undefined) {
-      try { await db[t].clear(); } catch { /* tabla vacía */ }
-      if (payload.data[t].length) {
-        await db[t].bulkAdd(payload.data[t]);
+    if (payload.data[t] === undefined) continue;
+    if (t === 'users') {
+      if (actorId && payload.data.users.length) {
+        await rpcImportUsers(actorId, payload.data.users);
       }
+      continue;
+    }
+    try { await db[t].clear(); } catch { /* tabla vacía */ }
+    if (payload.data[t].length) {
+      await db[t].bulkAdd(payload.data[t]);
     }
   }
 }

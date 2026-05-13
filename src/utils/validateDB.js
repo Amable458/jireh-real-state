@@ -1,4 +1,4 @@
-import { db } from '../db/database.js';
+import { db, rpcListUsers, rpcUserCount } from '../db/database.js';
 import { normalizeConfig, SYSTEM_BONUS_ID } from './distribution.js';
 
 // Audita la base de datos local y devuelve un reporte de inconsistencias.
@@ -6,8 +6,14 @@ export async function validateDB() {
   const issues = [];
   const stats = {};
 
-  // 1) Tablas y conteos
-  const tables = ['users', 'rentals', 'sales', 'expenses', 'properties', 'tenants', 'agents', 'distributionConfig', 'distributions', 'activityLog', 'settings'];
+  // 1) Tablas y conteos (users via RPC porque tiene RLS strict)
+  const tables = ['rentals', 'sales', 'expenses', 'properties', 'tenants', 'agents', 'distributionConfig', 'distributions', 'activityLog', 'settings'];
+  try {
+    stats.users = await rpcUserCount();
+  } catch (e) {
+    issues.push({ level: 'error', table: 'users', message: `No se pudo contar usuarios: ${e.message}` });
+    stats.users = -1;
+  }
   for (const t of tables) {
     try {
       stats[t] = await db.table(t).count();
@@ -17,8 +23,8 @@ export async function validateDB() {
     }
   }
 
-  // 2) Usuarios
-  const users = await db.users.toArray();
+  // 2) Usuarios (via RPC, no expone passHash)
+  const users = await rpcListUsers();
   if (users.length === 0) {
     issues.push({ level: 'error', table: 'users', message: 'No hay usuarios en la BD. Use "Restablecer usuarios por defecto" en el login.' });
   }
@@ -27,7 +33,6 @@ export async function validateDB() {
     issues.push({ level: 'error', table: 'users', message: 'No hay ningún SuperAdmin activo. Se perderá acceso a configuración.' });
   }
   users.forEach((u) => {
-    if (!u.passHash) issues.push({ level: 'error', table: 'users', message: `Usuario "${u.username}" sin passHash (no puede iniciar sesión).` });
     if (!['SuperAdmin', 'Admin', 'Operativo'].includes(u.role)) issues.push({ level: 'warning', table: 'users', message: `Usuario "${u.username}" con rol desconocido: ${u.role}` });
   });
 

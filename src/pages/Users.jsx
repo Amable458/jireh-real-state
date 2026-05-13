@@ -6,8 +6,10 @@ import Modal, { ConfirmModal } from '../components/Modal.jsx';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
-import { db, logActivity } from '../db/database.js';
-import { sha256 } from '../utils/crypto.js';
+import {
+  db, logActivity,
+  rpcListUsers, rpcCreateUser, rpcUpdateUser, rpcChangePassword, rpcToggleBlock
+} from '../db/database.js';
 import { fmtDateTime } from '../utils/format.js';
 
 const ROLES = ['SuperAdmin', 'Admin', 'Operativo'];
@@ -20,20 +22,25 @@ export default function Users() {
   const [logs, setLogs] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty());
-  const [editId, setEditId] = useState(null);
-  const [confirm, setConfirm] = useState({ open: false, kind: '', id: null });
+  const [editRow, setEditRow] = useState(null);
+  const [confirm, setConfirm] = useState({ open: false, id: null });
   const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
-    setRows(await db.users.toArray());
-    const all = await db.activityLog.orderBy('ts').reverse().limit(50).toArray();
-    setLogs(all);
+    try {
+      setRows(await rpcListUsers());
+      const all = await db.activityLog.orderBy('ts').reverse().limit(50).toArray();
+      setLogs(all);
+    } catch (e) {
+      console.error('Users load error:', e);
+    }
   };
   useEffect(() => { load(); }, []);
 
-  const onAdd = () => { setEditId(null); setForm(empty()); setErr(''); setOpen(true); };
+  const onAdd = () => { setEditRow(null); setForm(empty()); setErr(''); setOpen(true); };
   const onEdit = (u) => {
-    setEditId(u.id);
+    setEditRow(u);
     setForm({ username: u.username, fullName: u.fullName || '', role: u.role, password: '' });
     setErr(''); setOpen(true);
   };
@@ -42,36 +49,38 @@ export default function Users() {
     e.preventDefault();
     setErr('');
     if (!form.username.trim()) return setErr('Usuario requerido');
-    if (!editId && form.password.length < 6) return setErr('La contraseña debe tener al menos 6 caracteres');
+    if (!editRow && form.password.length < 6) return setErr('La contraseña debe tener al menos 6 caracteres');
+    if (editRow && form.password && form.password.length < 6) return setErr('La nueva contraseña debe tener al menos 6 caracteres');
 
-    if (editId) {
-      const target = await db.users.get(editId);
-      if (target.role === 'SuperAdmin' && form.role !== 'SuperAdmin' && !isSuper) {
-        return setErr('Solo SuperAdmin puede modificar otros SuperAdmin');
+    setSaving(true);
+    try {
+      if (editRow) {
+        await rpcUpdateUser(user.sub, editRow.id, form.username.trim(), form.fullName, form.role);
+        if (form.password) {
+          await rpcChangePassword(user.sub, editRow.id, form.password);
+        }
+        await logActivity(user.sub, user.username, 'user.update', `id=${editRow.id}`);
+      } else {
+        const newId = await rpcCreateUser(user.sub, form.username.trim(), form.password, form.role, form.fullName);
+        await logActivity(user.sub, user.username, 'user.create', `id=${newId} role=${form.role}`);
       }
-      const patch = { username: form.username, fullName: form.fullName, role: form.role };
-      if (form.password) patch.passHash = await sha256(form.password);
-      await db.users.update(editId, patch);
-      await logActivity(user.sub, user.username, 'user.update', `id=${editId}`);
-    } else {
-      const exists = await db.users.where('username').equalsIgnoreCase(form.username.trim()).first();
-      if (exists) return setErr('Usuario ya existe');
-      const id = await db.users.add({
-        username: form.username.trim(), fullName: form.fullName,
-        role: form.role, passHash: await sha256(form.password),
-        blocked: 0, createdAt: new Date().toISOString()
-      });
-      await logActivity(user.sub, user.username, 'user.create', `id=${id} role=${form.role}`);
+      setOpen(false);
+      await load();
+    } catch (ex) {
+      setErr(ex.message || 'Error al guardar');
+    } finally {
+      setSaving(false);
     }
-    setOpen(false); load();
   };
 
-  const toggleBlock = async (u) => {
-    if (u.role === 'SuperAdmin' && !isSuper) return;
-    if (u.id === user.sub) return;
-    await db.users.update(u.id, { blocked: u.blocked ? 0 : 1 });
-    await logActivity(user.sub, user.username, u.blocked ? 'user.unblock' : 'user.block', `id=${u.id}`);
-    load();
+  const doToggleBlock = async (u) => {
+    try {
+      const newState = await rpcToggleBlock(user.sub, u.id);
+      await logActivity(user.sub, user.username, newState ? 'user.block' : 'user.unblock', `id=${u.id}`);
+      await load();
+    } catch (ex) {
+      alert(ex.message || 'Error al cambiar estado');
+    }
   };
 
   const columns = [
@@ -88,7 +97,7 @@ export default function Users() {
       return (
         <div className="flex gap-1 justify-end">
           <button onClick={() => onEdit(u)} disabled={cantTouch} className="btn-ghost p-1.5 disabled:opacity-30"><Edit2 size={14} /></button>
-          <button onClick={() => setConfirm({ open: true, kind: 'block', id: u.id })} disabled={cantTouch} className={`btn-ghost p-1.5 disabled:opacity-30 ${u.blocked ? 'text-emerald-600' : 'text-red-600'}`}>
+          <button onClick={() => setConfirm({ open: true, id: u.id })} disabled={cantTouch} className={`btn-ghost p-1.5 disabled:opacity-30 ${u.blocked ? 'text-emerald-600' : 'text-red-600'}`}>
             {u.blocked ? <Unlock size={14} /> : <Lock size={14} />}
           </button>
         </div>
@@ -134,14 +143,14 @@ export default function Users() {
 
       <Modal
         open={open} onClose={() => setOpen(false)}
-        title={editId ? 'Editar usuario' : 'Nuevo usuario'}
+        title={editRow ? 'Editar usuario' : 'Nuevo usuario'}
         footer={<>
           <button className="btn-secondary" onClick={() => setOpen(false)}>Cancelar</button>
-          <button className="btn-primary" onClick={save}>Guardar</button>
+          <button className="btn-primary" disabled={saving} onClick={save}>{saving ? 'Guardando...' : 'Guardar'}</button>
         </>}
       >
         <form onSubmit={save} className="space-y-4">
-          <div><label className="label">Usuario</label><input className="input" required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></div>
+          <div><label className="label">Usuario</label><input className="input" required autoCapitalize="off" spellCheck={false} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></div>
           <div><label className="label">Nombre completo</label><input className="input" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></div>
           <div>
             <label className="label">Rol</label>
@@ -150,8 +159,8 @@ export default function Users() {
             </select>
           </div>
           <div>
-            <label className="label">{editId ? 'Nueva contraseña (opcional)' : 'Contraseña'}</label>
-            <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editId ? 'Dejar en blanco para no cambiar' : 'mínimo 6 caracteres'} />
+            <label className="label">{editRow ? 'Nueva contraseña (opcional)' : 'Contraseña'}</label>
+            <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editRow ? 'Dejar en blanco para no cambiar' : 'mínimo 6 caracteres'} />
           </div>
           {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{err}</div>}
         </form>
@@ -159,10 +168,10 @@ export default function Users() {
 
       <ConfirmModal
         open={confirm.open}
-        onClose={() => setConfirm({ open: false, kind: '', id: null })}
+        onClose={() => setConfirm({ open: false, id: null })}
         onConfirm={async () => {
-          const u = await db.users.get(confirm.id);
-          if (u) await toggleBlock(u);
+          const u = rows.find((x) => x.id === confirm.id);
+          if (u) await doToggleBlock(u);
         }}
         title="Cambiar estado"
         message="¿Confirma cambiar el estado (activo/bloqueado) de este usuario?"
