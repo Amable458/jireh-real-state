@@ -47,7 +47,8 @@ function errorScreen(err) {
     'No se pudo iniciar la aplicación',
     err?.message || 'Error desconocido.',
     `<ul style="font-size:13px;color:#56607a;padding-left:18px;margin:0 0 8px;line-height:1.6;">
-       <li>Verifica que ejecutaste <b>supabase/schema.sql</b> en el SQL Editor de Supabase.</li>
+       <li>Verifica que ejecutaste <b>supabase/schema.sql</b> en el SQL Editor.</li>
+       <li>Verifica que también ejecutaste <b>supabase/security.sql</b> (RPCs auth_*).</li>
        <li>Confirma que las variables <code>VITE_SUPABASE_URL</code> y <code>VITE_SUPABASE_ANON_KEY</code> están bien.</li>
        <li>Revisa la consola del navegador (F12) para más detalles.</li>
      </ul>`

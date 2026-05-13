@@ -4,11 +4,38 @@
 -- Idempotente: se puede ejecutar varias veces.
 -- ============================================================
 
--- 1) Extensión bcrypt
--- Supabase la instala en el schema "extensions" por defecto.
--- Si no existe, la creamos ahí.
+-- 1) Extensión pgcrypto (bcrypt, digest, crypt, gen_salt)
+-- Detecta dónde está pgcrypto y la mueve a `extensions` si está en otro lugar.
+-- Si no existe, la crea allí.
 create schema if not exists extensions;
-create extension if not exists pgcrypto with schema extensions;
+
+do $$
+declare current_schema_name text;
+begin
+  select n.nspname into current_schema_name
+  from pg_extension e
+  join pg_namespace n on e.extnamespace = n.oid
+  where e.extname = 'pgcrypto';
+
+  if current_schema_name is null then
+    create extension pgcrypto with schema extensions;
+    raise notice 'pgcrypto instalada en schema extensions';
+  elsif current_schema_name not in ('extensions', 'public') then
+    execute 'alter extension pgcrypto set schema extensions';
+    raise notice 'pgcrypto movida de % a extensions', current_schema_name;
+  else
+    raise notice 'pgcrypto ya disponible en schema %', current_schema_name;
+  end if;
+end $$;
+
+-- Diagnóstico — confirma que gen_salt es alcanzable
+do $$
+declare test_hash text;
+begin
+  set local search_path = public, extensions;
+  select crypt('test', gen_salt('bf', 4)) into test_hash;
+  raise notice '✓ pgcrypto funciona. Hash de prueba: %', substr(test_hash, 1, 20);
+end $$;
 
 -- ============================================================
 -- 2) FUNCIONES RPC DE AUTENTICACIÓN
