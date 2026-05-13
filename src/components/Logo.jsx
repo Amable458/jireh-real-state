@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 // Si existe /logo.svg o /logo.png en /public, lo usa.
 // Si no, fallback al SVG dibujado a mano.
-const CUSTOM_LOGO_URLS = ['/logo.svg', '/logo.png'];
+const CUSTOM_LOGO_URLS = ['/logo.svg', '/logo.png', '/logo.jpg', '/logo.jpeg', '/logo.webp'];
 
 function useCustomLogo() {
   const [src, setSrc] = useState(null);
