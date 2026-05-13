@@ -6,3 +6,6 @@ dist
 .env*
 
 .vercel
+.env
+.env.local
+.env.production
