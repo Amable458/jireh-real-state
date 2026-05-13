@@ -5,7 +5,10 @@
 -- ============================================================
 
 -- 1) Extensión bcrypt
-create extension if not exists pgcrypto;
+-- Supabase la instala en el schema "extensions" por defecto.
+-- Si no existe, la creamos ahí.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ============================================================
 -- 2) FUNCIONES RPC DE AUTENTICACIÓN
@@ -17,7 +20,7 @@ create extension if not exists pgcrypto;
 create or replace function auth_login(p_username text, p_password text)
 returns table(id bigint, username text, role text, "fullName" text, blocked smallint)
 language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   u record;
@@ -47,7 +50,7 @@ $$;
 -- 2.2 SEMBRAR USUARIOS POR DEFECTO (idempotente, hashea con bcrypt)
 create or replace function auth_ensure_default_users()
 returns text[] language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   created text[] := '{}';
@@ -73,7 +76,7 @@ $$;
 create or replace function auth_list_users()
 returns table(id bigint, username text, role text, "fullName" text, blocked smallint, "createdAt" timestamptz)
 language sql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select id, username, role, "fullName", blocked, "createdAt" from users order by id;
 $$;
@@ -81,7 +84,7 @@ $$;
 -- 2.4 CONTAR USUARIOS
 create or replace function auth_user_count()
 returns int language sql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select count(*)::int from users;
 $$;
@@ -95,7 +98,7 @@ create or replace function auth_create_user(
   p_full_name text
 ) returns bigint
 language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare actor record; new_id bigint;
 begin
@@ -126,7 +129,7 @@ create or replace function auth_update_user(
   p_username text, p_full_name text, p_role text
 ) returns void
 language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare actor record; target record;
 begin
@@ -156,7 +159,7 @@ create or replace function auth_change_password(
   actor_id bigint, target_id bigint, new_password text
 ) returns void
 language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare actor record; target record;
 begin
@@ -180,7 +183,7 @@ $$;
 -- 2.8 BLOQUEAR / DESBLOQUEAR
 create or replace function auth_toggle_block(actor_id bigint, target_id bigint)
 returns smallint language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare actor record; target record; new_state smallint;
 begin
@@ -204,7 +207,7 @@ $$;
 -- 2.9 EXPORT / IMPORT (con passHash, solo SuperAdmin)
 create or replace function auth_admin_export_users(actor_id bigint)
 returns setof users language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare actor record;
 begin
@@ -216,7 +219,7 @@ $$;
 
 create or replace function auth_admin_import_users(actor_id bigint, payload jsonb)
 returns int language plpgsql security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare actor record; n int := 0; rec jsonb;
 begin
