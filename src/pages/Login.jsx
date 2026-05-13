@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../store/auth.js';
-import Logo from '../components/Logo.jsx';
+import Logo, { LogoMark } from '../components/Logo.jsx';
 import { rpcUserCount, rpcEnsureDefaultUsers } from '../db/database.js';
 
 export default function Login() {
@@ -63,7 +63,7 @@ export default function Login() {
         <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-brand-400 opacity-40" />
         <div className="absolute -bottom-40 -right-20 w-[28rem] h-[28rem] rounded-full bg-brand-600 opacity-20" />
         <div className="relative z-10">
-          <Logo size={120} vertical />
+          <Logo size={120} />
         </div>
       </div>
 
@@ -71,8 +71,8 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 sm:p-12 bg-ink-50">
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex justify-center mb-6 text-ink-900">
-            <div className="bg-brand-500 px-5 py-4 rounded-2xl">
-              <Logo size={42} />
+            <div className="bg-brand-500 px-5 py-3 rounded-2xl">
+              <Logo size={36} />
             </div>
           </div>
 
