@@ -11,7 +11,10 @@ function useCustomLogo() {
       for (const url of CUSTOM_LOGO_URLS) {
         try {
           const r = await fetch(url, { method: 'HEAD' });
-          if (r.ok) { setSrc(url); return; }
+          if (!r.ok) continue;
+          // Validar Content-Type: si es HTML, es el SPA fallback (archivo no existe)
+          const ct = r.headers.get('content-type') || '';
+          if (ct.startsWith('image/')) { setSrc(url); return; }
         } catch { /* ignore */ }
       }
     })();
