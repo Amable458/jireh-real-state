@@ -36,7 +36,7 @@ export default function Login() {
     setLoading(false);
     if (!r.ok) {
       setErr(r.message);
-      setShowHelp(true);
+      // No abrimos el panel automáticamente — el usuario lo abre solo si lo necesita
     } else {
       nav(loc.state?.from?.pathname || '/dashboard', { replace: true });
     }
