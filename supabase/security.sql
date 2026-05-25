@@ -85,6 +85,7 @@ returns table(user_id bigint, username text, role text, "fullName" text)
 language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare s record;
 begin
   if p_token is null or length(p_token) < 16 then return; end if;
@@ -128,6 +129,7 @@ returns table(
 language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare
   u record;
   legacy_hash text;
@@ -223,6 +225,7 @@ create or replace function auth_ensure_default_users()
 returns text[] language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare
   created text[] := '{}';
   u record;
@@ -248,6 +251,7 @@ returns table(id bigint, username text, role text, "fullName" text, blocked smal
 language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare s record;
 begin
   s := validate_session(p_token);
@@ -396,6 +400,7 @@ create or replace function auth_admin_export_users(p_token text)
 returns setof users language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare s record;
 begin
   s := validate_session(p_token);
@@ -407,6 +412,7 @@ create or replace function auth_admin_import_users(p_token text, payload jsonb)
 returns int language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare s record; n int := 0; rec jsonb;
 begin
   s := validate_session(p_token);
@@ -439,6 +445,7 @@ create or replace function purge_activity_log(p_token text, p_days_keep int defa
 returns int language plpgsql security definer
 set search_path = public, extensions
 as $$
+#variable_conflict use_column
 declare s record; deleted_count int;
 begin
   s := validate_session(p_token);
