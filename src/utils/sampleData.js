@@ -58,21 +58,37 @@ const dayInMonth = (y, m, d) => {
 
 const pick = (arr, i) => arr[i % arr.length];
 
+// Tablas a limpiar. Excluye:
+//  - 'distributions' (eliminada del schema en security.sql)
+//  - 'activityLog' (RLS bloquea DELETE para preservar evidencia)
+//  - 'users', 'agents', 'distributionConfig', 'settings' (se conservan)
+const WIPE_TABLES = ['rentals', 'sales', 'expenses', 'tenants', 'properties'];
+
 export async function clearTransactionalData(currentUser) {
-  const tablesToWipe = ['rentals', 'sales', 'expenses', 'properties', 'tenants', 'distributions', 'activityLog'];
-  await db.transaction('rw', tablesToWipe.map((t) => db.table(t)), async () => {
-    for (const t of tablesToWipe) await db.table(t).clear();
-  });
+  // Orden importante: primero las tablas dependientes (rentals, sales, tenants)
+  // y al final las raíz (properties). Aunque las FKs son ON DELETE SET NULL,
+  // así evitamos lecturas inconsistentes durante la operación.
+  for (const t of WIPE_TABLES) {
+    const table = db.table(t);
+    if (!table) continue;
+    try { await table.clear(); }
+    catch (e) { console.warn(`[Jireh] No se pudo limpiar ${t}:`, e.message); }
+  }
   if (currentUser) {
     await logActivity(currentUser.sub, currentUser.username, 'data.clear', 'Datos transaccionales eliminados');
   }
 }
 
 export async function loadSampleData(currentUser) {
-  await db.transaction('rw', db.tables, async () => {
-    const tablesToWipe = ['rentals', 'sales', 'expenses', 'properties', 'tenants', 'distributions', 'activityLog'];
-    for (const t of tablesToWipe) await db.table(t).clear();
+  // Limpiamos antes de sembrar (mismo set seguro que clearTransactionalData)
+  for (const t of WIPE_TABLES) {
+    const table = db.table(t);
+    if (!table) continue;
+    try { await table.clear(); }
+    catch (e) { console.warn(`[Jireh] No se pudo limpiar ${t}:`, e.message); }
+  }
 
+  {
     const allAgents = await db.agents.toArray();
     const existingNames = new Set(allAgents.map((a) => a.name));
     const toAdd = AGENT_EXTRA.filter((a) => !existingNames.has(a.name));
@@ -171,7 +187,7 @@ export async function loadSampleData(currentUser) {
     if (rentals.length) await db.rentals.bulkAdd(rentals);
     if (sales.length) await db.sales.bulkAdd(sales);
     if (expenses.length) await db.expenses.bulkAdd(expenses);
-  });
+  }
 
   if (currentUser) {
     await logActivity(currentUser.sub, currentUser.username, 'sample.load', 'Datos de ejemplo cargados');
