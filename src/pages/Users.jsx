@@ -7,7 +7,7 @@ import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
 import {
-  db, logActivity,
+  db,
   rpcListUsers, rpcCreateUser, rpcUpdateUser, rpcChangePassword, rpcToggleBlock
 } from '../db/database.js';
 import { fmtDateTime } from '../utils/format.js';
@@ -16,7 +16,7 @@ const ROLES = ['SuperAdmin', 'Admin', 'Operativo'];
 const empty = () => ({ username: '', fullName: '', role: 'Operativo', password: '' });
 
 export default function Users() {
-  const { user, hasRole } = useAuth();
+  const { user, token, hasRole } = useAuth();
   const isSuper = hasRole('SuperAdmin');
   const [rows, setRows] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -29,7 +29,7 @@ export default function Users() {
 
   const load = async () => {
     try {
-      setRows(await rpcListUsers());
+      setRows(await rpcListUsers(token));
       const all = await db.activityLog.orderBy('ts').reverse().limit(50).toArray();
       setLogs(all);
     } catch (e) {
@@ -55,14 +55,12 @@ export default function Users() {
     setSaving(true);
     try {
       if (editRow) {
-        await rpcUpdateUser(user.sub, editRow.id, form.username.trim(), form.fullName, form.role);
+        await rpcUpdateUser(token, editRow.id, form.username.trim(), form.fullName, form.role);
         if (form.password) {
-          await rpcChangePassword(user.sub, editRow.id, form.password);
+          await rpcChangePassword(token, editRow.id, form.password);
         }
-        await logActivity(user.sub, user.username, 'user.update', `id=${editRow.id}`);
       } else {
-        const newId = await rpcCreateUser(user.sub, form.username.trim(), form.password, form.role, form.fullName);
-        await logActivity(user.sub, user.username, 'user.create', `id=${newId} role=${form.role}`);
+        await rpcCreateUser(token, form.username.trim(), form.password, form.role, form.fullName);
       }
       setOpen(false);
       await load();
@@ -75,8 +73,7 @@ export default function Users() {
 
   const doToggleBlock = async (u) => {
     try {
-      const newState = await rpcToggleBlock(user.sub, u.id);
-      await logActivity(user.sub, user.username, newState ? 'user.block' : 'user.unblock', `id=${u.id}`);
+      await rpcToggleBlock(token, u.id);
       await load();
     } catch (ex) {
       alert(ex.message || 'Error al cambiar estado');

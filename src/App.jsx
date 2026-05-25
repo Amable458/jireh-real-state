@@ -1,47 +1,84 @@
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import ProtectedRoute from './router/ProtectedRoute.jsx';
+import { useAuth } from './store/auth.js';
+
+// Login no se hace lazy (es la pantalla más común antes de autenticar)
 import Login from './pages/Login.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import Rentals from './pages/Rentals.jsx';
-import Sales from './pages/Sales.jsx';
-import Expenses from './pages/Expenses.jsx';
-import Distribution from './pages/Distribution.jsx';
-import Bonuses from './pages/Bonuses.jsx';
-import Properties from './pages/Properties.jsx';
-import Reports from './pages/Reports.jsx';
-import Users from './pages/Users.jsx';
-import Backup from './pages/Backup.jsx';
+
+// Code splitting: cada ruta protegida se descarga bajo demanda
+const Dashboard    = lazy(() => import('./pages/Dashboard.jsx'));
+const Rentals      = lazy(() => import('./pages/Rentals.jsx'));
+const Sales        = lazy(() => import('./pages/Sales.jsx'));
+const Expenses     = lazy(() => import('./pages/Expenses.jsx'));
+const Distribution = lazy(() => import('./pages/Distribution.jsx'));
+const Bonuses      = lazy(() => import('./pages/Bonuses.jsx'));
+const Properties   = lazy(() => import('./pages/Properties.jsx'));
+const Reports      = lazy(() => import('./pages/Reports.jsx'));
+const Users        = lazy(() => import('./pages/Users.jsx'));
+const Backup       = lazy(() => import('./pages/Backup.jsx'));
+
+function PageFallback() {
+  return (
+    <div className="flex items-center justify-center h-full p-12">
+      <div className="text-ink-400 text-sm">Cargando...</div>
+    </div>
+  );
+}
+
+function HydrateGate({ children }) {
+  const { ready, hydrate } = useAuth();
+  useEffect(() => { hydrate(); /* eslint-disable-line */ }, []);
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink-50">
+        <div className="text-ink-400 text-sm">Validando sesión...</div>
+      </div>
+    );
+  }
+  return children;
+}
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
+    <HydrateGate>
+      <Routes>
+        <Route path="/login" element={<Login />} />
 
-      <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/ingresos" element={<Rentals />} />
-        <Route path="/ventas" element={<Sales />} />
-        <Route path="/gastos" element={<Expenses />} />
-        <Route path="/bonificaciones" element={<Bonuses />} />
-        <Route path="/propiedades" element={<Properties />} />
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route path="/dashboard" element={<Suspense fallback={<PageFallback />}><Dashboard /></Suspense>} />
+          <Route path="/ingresos" element={<Suspense fallback={<PageFallback />}><Rentals /></Suspense>} />
+          <Route path="/ventas" element={<Suspense fallback={<PageFallback />}><Sales /></Suspense>} />
+          <Route path="/gastos" element={<Suspense fallback={<PageFallback />}><Expenses /></Suspense>} />
+          <Route path="/bonificaciones" element={<Suspense fallback={<PageFallback />}><Bonuses /></Suspense>} />
+          <Route path="/propiedades" element={<Suspense fallback={<PageFallback />}><Properties /></Suspense>} />
 
-        <Route path="/distribucion" element={
-          <ProtectedRoute roles={['SuperAdmin', 'Admin']}><Distribution /></ProtectedRoute>
-        } />
-        <Route path="/reportes" element={
-          <ProtectedRoute roles={['SuperAdmin', 'Admin']}><Reports /></ProtectedRoute>
-        } />
-        <Route path="/usuarios" element={
-          <ProtectedRoute roles={['SuperAdmin', 'Admin']}><Users /></ProtectedRoute>
-        } />
-        <Route path="/respaldo" element={
-          <ProtectedRoute roles={['SuperAdmin']}><Backup /></ProtectedRoute>
-        } />
-      </Route>
+          <Route path="/distribucion" element={
+            <ProtectedRoute roles={['SuperAdmin', 'Admin']}>
+              <Suspense fallback={<PageFallback />}><Distribution /></Suspense>
+            </ProtectedRoute>
+          } />
+          <Route path="/reportes" element={
+            <ProtectedRoute roles={['SuperAdmin', 'Admin']}>
+              <Suspense fallback={<PageFallback />}><Reports /></Suspense>
+            </ProtectedRoute>
+          } />
+          <Route path="/usuarios" element={
+            <ProtectedRoute roles={['SuperAdmin', 'Admin']}>
+              <Suspense fallback={<PageFallback />}><Users /></Suspense>
+            </ProtectedRoute>
+          } />
+          <Route path="/respaldo" element={
+            <ProtectedRoute roles={['SuperAdmin']}>
+              <Suspense fallback={<PageFallback />}><Backup /></Suspense>
+            </ProtectedRoute>
+          } />
+        </Route>
 
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </HydrateGate>
   );
 }

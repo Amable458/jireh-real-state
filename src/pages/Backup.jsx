@@ -10,7 +10,7 @@ import { loadSampleData, clearTransactionalData } from '../utils/sampleData.js';
 import { validateDB, repairOrphans } from '../utils/validateDB.js';
 
 export default function Backup() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const fileRef = useRef(null);
   const [pendingPayload, setPendingPayload] = useState(null);
   const [confirmImport, setConfirmImport] = useState(false);
@@ -24,7 +24,7 @@ export default function Backup() {
   const [validating, setValidating] = useState(false);
 
   const onExport = async () => {
-    const data = await exportAll(user.sub);
+    const data = await exportAll(token);
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -110,7 +110,7 @@ export default function Backup() {
 
   const doImport = async () => {
     try {
-      await importAll(pendingPayload, user.sub);
+      await importAll(pendingPayload, token);
       await logActivity(user.sub, user.username, 'backup.import', '');
       setMsg('Restauración completada. Recargando...');
       setTimeout(() => window.location.reload(), 1500);

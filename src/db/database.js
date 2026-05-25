@@ -3,15 +3,11 @@ import { supabase, isConfigured } from './supabaseClient.js';
 // Tablas del sistema
 const TABLES = [
   'users', 'rentals', 'sales', 'expenses', 'properties', 'tenants', 'agents',
-  'distributionConfig', 'distributions', 'activityLog', 'settings'
+  'distributionConfig', 'activityLog', 'settings'
 ];
-
-// Tablas con PK de tipo texto en vez de bigserial
 const STRING_PK_TABLES = new Set(['distributionConfig', 'settings']);
 
 const pkOf = (table) => (STRING_PK_TABLES.has(table) ? 'key' : 'id');
-
-// Escapa los caracteres especiales de LIKE/ILIKE
 const escapeLike = (v) => String(v).replace(/[\\%_]/g, (m) => '\\' + m);
 
 function ensureClient() {
@@ -20,7 +16,7 @@ function ensureClient() {
   }
 }
 
-// --- Builder encadenable: .first() .toArray() .count() .delete() ---
+// --- Builder encadenable ---
 function makeChained(table, applyFilter) {
   return {
     async first() {
@@ -49,36 +45,29 @@ function makeChained(table, applyFilter) {
   };
 }
 
-// --- Tabla con API tipo-Dexie ---
 function makeTable(table) {
   const pk = pkOf(table);
   const isStringPk = STRING_PK_TABLES.has(table);
-
   return {
-    _name: table,
-    _pk: pk,
-
+    _name: table, _pk: pk,
     async count() {
       ensureClient();
       const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true });
       if (error) throw error;
       return count || 0;
     },
-
     async toArray() {
       ensureClient();
       const { data, error } = await supabase.from(table).select('*');
       if (error) throw error;
       return data || [];
     },
-
     async get(key) {
       ensureClient();
       const { data, error } = await supabase.from(table).select('*').eq(pk, key).maybeSingle();
       if (error) throw error;
       return data || undefined;
     },
-
     async add(obj) {
       ensureClient();
       const ins = { ...obj };
@@ -87,7 +76,6 @@ function makeTable(table) {
       if (error) throw error;
       return data[pk];
     },
-
     async bulkAdd(arr, opts) {
       ensureClient();
       if (!arr || !arr.length) return opts?.allKeys ? [] : undefined;
@@ -101,32 +89,26 @@ function makeTable(table) {
       if (error) throw error;
       return opts?.allKeys ? data.map((r) => r[pk]) : undefined;
     },
-
     async update(key, patch) {
       ensureClient();
       const { error } = await supabase.from(table).update(patch).eq(pk, key);
       if (error) throw error;
     },
-
     async delete(key) {
       ensureClient();
       const { error } = await supabase.from(table).delete().eq(pk, key);
       if (error) throw error;
     },
-
     async put(obj) {
       ensureClient();
       const { error } = await supabase.from(table).upsert(obj, { onConflict: pk });
       if (error) throw error;
     },
-
     async clear() {
       ensureClient();
-      // Borrar todas las filas (without a WHERE Postgres rechaza)
       const { error } = await supabase.from(table).delete().not(pk, 'is', null);
       if (error) throw error;
     },
-
     where(criteria) {
       if (typeof criteria === 'string') {
         const field = criteria;
@@ -138,10 +120,8 @@ function makeTable(table) {
       const filters = Object.entries(criteria);
       return makeChained(table, (q) => filters.reduce((acc, [f, v]) => acc.eq(f, v), q));
     },
-
     orderBy(field) {
-      let ascending = true;
-      let limitN = null;
+      let ascending = true, limitN = null;
       const api = {
         reverse() { ascending = false; return api; },
         limit(n) { limitN = n; return api; },
@@ -159,29 +139,35 @@ function makeTable(table) {
   };
 }
 
-// --- Objeto principal `db` ---
-export const db = TABLES.reduce((acc, t) => {
-  acc[t] = makeTable(t);
-  return acc;
-}, {
+export const db = TABLES.reduce((acc, t) => { acc[t] = makeTable(t); return acc; }, {
   tables: [],
   table(name) { return this[name]; },
-  // Supabase no soporta transacciones desde el cliente.
-  // Ejecuta secuencialmente; para atomicidad real, usar RPC en Postgres.
   async transaction(_mode, _tables, fn) { return fn(); }
 });
 db.tables = TABLES.map((t) => db[t]);
 
 // =================================================================
-// USUARIOS POR DEFECTO + INIT
+// AUTH RPCs — basadas en token de sesión server-side
 // =================================================================
 
-// =================================================================
-// AUTH RPCs (server-side, ver supabase/security.sql)
-// =================================================================
+export async function rpcLogin(username, password, remember = false) {
+  const { data, error } = await supabase.rpc('auth_login', {
+    p_username: username,
+    p_password: password,
+    p_remember: !!remember
+  });
+  if (error) throw error;
+  return Array.isArray(data) && data.length ? data[0] : null;
+}
 
-export async function rpcLogin(username, password) {
-  const { data, error } = await supabase.rpc('auth_login', { p_username: username, p_password: password });
+export async function rpcLogout(token) {
+  if (!token) return;
+  try { await supabase.rpc('auth_logout', { p_token: token }); } catch { /* best-effort */ }
+}
+
+export async function rpcValidateSession(token) {
+  if (!token) return null;
+  const { data, error } = await supabase.rpc('auth_validate', { p_token: token });
   if (error) throw error;
   return Array.isArray(data) && data.length ? data[0] : null;
 }
@@ -198,57 +184,63 @@ export async function rpcUserCount() {
   return typeof data === 'number' ? data : 0;
 }
 
-export async function rpcListUsers() {
-  const { data, error } = await supabase.rpc('auth_list_users');
+export async function rpcListUsers(token) {
+  const { data, error } = await supabase.rpc('auth_list_users', { p_token: token });
   if (error) throw error;
   return data || [];
 }
 
-export async function rpcCreateUser(actorId, username, password, role, fullName) {
+export async function rpcCreateUser(token, username, password, role, fullName) {
   const { data, error } = await supabase.rpc('auth_create_user', {
-    actor_id: actorId, p_username: username, p_password: password,
+    p_token: token, p_username: username, p_password: password,
     p_role: role, p_full_name: fullName
   });
   if (error) throw error;
   return data;
 }
 
-export async function rpcUpdateUser(actorId, targetId, username, fullName, role) {
+export async function rpcUpdateUser(token, targetId, username, fullName, role) {
   const { error } = await supabase.rpc('auth_update_user', {
-    actor_id: actorId, target_id: targetId,
+    p_token: token, target_id: targetId,
     p_username: username, p_full_name: fullName, p_role: role
   });
   if (error) throw error;
 }
 
-export async function rpcChangePassword(actorId, targetId, newPassword) {
+export async function rpcChangePassword(token, targetId, newPassword) {
   const { error } = await supabase.rpc('auth_change_password', {
-    actor_id: actorId, target_id: targetId, new_password: newPassword
+    p_token: token, target_id: targetId, new_password: newPassword
   });
   if (error) throw error;
 }
 
-export async function rpcToggleBlock(actorId, targetId) {
+export async function rpcToggleBlock(token, targetId) {
   const { data, error } = await supabase.rpc('auth_toggle_block', {
-    actor_id: actorId, target_id: targetId
+    p_token: token, target_id: targetId
   });
   if (error) throw error;
   return data;
 }
 
-export async function rpcExportUsers(actorId) {
-  const { data, error } = await supabase.rpc('auth_admin_export_users', { actor_id: actorId });
+export async function rpcExportUsers(token) {
+  const { data, error } = await supabase.rpc('auth_admin_export_users', { p_token: token });
   if (error) throw error;
   return data || [];
 }
 
-export async function rpcImportUsers(actorId, payload) {
-  const { data, error } = await supabase.rpc('auth_admin_import_users', { actor_id: actorId, payload });
+export async function rpcImportUsers(token, payload) {
+  const { data, error } = await supabase.rpc('auth_admin_import_users', { p_token: token, payload });
   if (error) throw error;
   return data || 0;
 }
 
-// Compatibilidad con código existente
+export async function rpcPurgeLog(token, daysKeep = 90) {
+  const { data, error } = await supabase.rpc('purge_activity_log', { p_token: token, p_days_keep: daysKeep });
+  if (error) throw error;
+  return data || 0;
+}
+
+// Compatibilidad
 export const DEFAULT_USERS = [
   { username: 'superadmin', role: 'SuperAdmin' },
   { username: 'admin',      role: 'Admin' },
@@ -260,19 +252,15 @@ export async function initDB() {
   if (!isConfigured) {
     throw new Error('Supabase no está configurado. Falta VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY.');
   }
-
-  // Test conexión vía RPC (no requiere acceso directo a tablas con RLS)
   try {
     await rpcUserCount();
   } catch (error) {
     console.error('[Jireh] Error al conectar con Supabase:', error);
     throw new Error('No se pudo conectar a Supabase: ' + (error.message || 'error desconocido') + '. ¿Ejecutaste schema.sql y security.sql?');
   }
-
   const created = await rpcEnsureDefaultUsers();
   if (created.length) console.info('[Jireh] Usuarios por defecto creados:', created.join(', '));
 
-  // Seed agentes si está vacío
   if ((await db.agents.count()) === 0) {
     await db.agents.bulkAdd([
       { name: 'María Reyes', active: 1 },
@@ -280,8 +268,6 @@ export async function initDB() {
       { name: 'Ana Jiménez', active: 1 }
     ]);
   }
-
-  // Seed configuración de distribución
   if (!(await db.distributionConfig.get('default'))) {
     await db.distributionConfig.put({
       key: 'default',
@@ -293,21 +279,23 @@ export async function initDB() {
       ]
     });
   }
-
-  // Seed settings
   if (!(await db.settings.get('app'))) {
     await db.settings.put({
-      key: 'app',
-      companyName: 'Jireh Real State',
-      currency: 'DOP',
-      contractAlertDays: 30
+      key: 'app', companyName: 'Jireh Real Estate', currency: 'DOP', contractAlertDays: 30
     });
   }
 }
 
-// =================================================================
-// BITÁCORA
-// =================================================================
+// Helper para logging desde el cliente. Se intentará leer el token actual.
+let _currentToken = null;
+let _currentUser = null;
+export function setSessionContext(token, user) {
+  _currentToken = token;
+  _currentUser = user;
+}
+export function getSessionContext() {
+  return { token: _currentToken, user: _currentUser };
+}
 
 export async function logActivity(userId, username, action, detail = '') {
   try {
@@ -320,16 +308,12 @@ export async function logActivity(userId, username, action, detail = '') {
   }
 }
 
-// =================================================================
-// EXPORT / IMPORT
-// =================================================================
-
-// actorId: id del SuperAdmin que invoca (necesario para acceder a users con RLS)
-export async function exportAll(actorId) {
-  const out = { exportedAt: new Date().toISOString(), version: 2, data: {} };
+// Export/Import — el actorId/token se necesita para tabla users (RLS strict)
+export async function exportAll(token) {
+  const out = { exportedAt: new Date().toISOString(), version: 3, data: {} };
   for (const t of TABLES) {
     if (t === 'users') {
-      out.data.users = actorId ? await rpcExportUsers(actorId) : [];
+      out.data.users = token ? await rpcExportUsers(token) : [];
     } else {
       out.data[t] = await db[t].toArray();
     }
@@ -337,19 +321,15 @@ export async function exportAll(actorId) {
   return out;
 }
 
-export async function importAll(payload, actorId) {
+export async function importAll(payload, token) {
   if (!payload?.data) throw new Error('Archivo inválido');
   for (const t of TABLES) {
     if (payload.data[t] === undefined) continue;
     if (t === 'users') {
-      if (actorId && payload.data.users.length) {
-        await rpcImportUsers(actorId, payload.data.users);
-      }
+      if (token && payload.data.users.length) await rpcImportUsers(token, payload.data.users);
       continue;
     }
     try { await db[t].clear(); } catch { /* tabla vacía */ }
-    if (payload.data[t].length) {
-      await db[t].bulkAdd(payload.data[t]);
-    }
+    if (payload.data[t].length) await db[t].bulkAdd(payload.data[t]);
   }
 }

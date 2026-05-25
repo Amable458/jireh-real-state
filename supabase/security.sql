@@ -1,80 +1,224 @@
 -- ============================================================
--- JIREH REAL STATE — HARDENING DE SEGURIDAD
+-- JIREH REAL STATE — HARDENING DE SEGURIDAD v2
 -- Ejecutar en Supabase → SQL Editor DESPUÉS de schema.sql
--- Idempotente: se puede ejecutar varias veces.
+-- Idempotente: se puede re-ejecutar sin problema.
 -- ============================================================
 
--- 1) Extensión pgcrypto (bcrypt, digest, crypt, gen_salt)
--- Detecta dónde está pgcrypto y la mueve a `extensions` si está en otro lugar.
--- Si no existe, la crea allí.
+-- 1) Extensión pgcrypto
 create schema if not exists extensions;
-
 do $$
 declare current_schema_name text;
 begin
   select n.nspname into current_schema_name
-  from pg_extension e
-  join pg_namespace n on e.extnamespace = n.oid
+  from pg_extension e join pg_namespace n on e.extnamespace = n.oid
   where e.extname = 'pgcrypto';
 
   if current_schema_name is null then
     create extension pgcrypto with schema extensions;
-    raise notice 'pgcrypto instalada en schema extensions';
   elsif current_schema_name not in ('extensions', 'public') then
     execute 'alter extension pgcrypto set schema extensions';
-    raise notice 'pgcrypto movida de % a extensions', current_schema_name;
-  else
-    raise notice 'pgcrypto ya disponible en schema %', current_schema_name;
   end if;
 end $$;
 
--- Diagnóstico — confirma que gen_salt es alcanzable
-do $$
-declare test_hash text;
+-- ============================================================
+-- 2) TABLAS DE SEGURIDAD
+-- ============================================================
+
+-- Sesiones server-side (reemplaza el JWT simulado)
+create table if not exists sessions (
+  token text primary key,
+  user_id bigint not null,
+  expires_at timestamptz not null,
+  created_at timestamptz default now(),
+  last_used_at timestamptz default now(),
+  user_agent text,
+  ip text
+);
+create index if not exists sessions_user_idx on sessions (user_id);
+create index if not exists sessions_expiry_idx on sessions (expires_at);
+
+-- Intentos de login (para lockout)
+create table if not exists login_attempts (
+  id bigserial primary key,
+  username text not null,
+  success boolean not null,
+  attempted_at timestamptz default now(),
+  ip text
+);
+create index if not exists login_attempts_user_time_idx on login_attempts (lower(username), attempted_at desc);
+
+-- ============================================================
+-- 3) HELPERS DE SEGURIDAD
+-- ============================================================
+
+-- Genera un token criptográficamente fuerte (64 chars hex)
+create or replace function gen_session_token() returns text
+language sql security definer
+set search_path = public, extensions
+as $$
+  select encode(gen_random_bytes(32), 'hex');
+$$;
+
+-- Verifica complejidad de contraseña
+-- Reglas: 8+ chars, mayúscula, minúscula, dígito
+create or replace function validate_password_policy(p_password text) returns void
+language plpgsql immutable
+as $$
 begin
-  set local search_path = public, extensions;
-  select crypt('test', gen_salt('bf', 4)) into test_hash;
-  raise notice '✓ pgcrypto funciona. Hash de prueba: %', substr(test_hash, 1, 20);
+  if p_password is null or length(p_password) < 8 then
+    raise exception 'La contraseña debe tener al menos 8 caracteres';
+  end if;
+  if p_password !~ '[A-Z]' then
+    raise exception 'La contraseña debe contener al menos una mayúscula';
+  end if;
+  if p_password !~ '[a-z]' then
+    raise exception 'La contraseña debe contener al menos una minúscula';
+  end if;
+  if p_password !~ '[0-9]' then
+    raise exception 'La contraseña debe contener al menos un dígito';
+  end if;
+end $$;
+
+-- Valida un token de sesión. Retorna user info o null.
+create or replace function validate_session(p_token text)
+returns table(user_id bigint, username text, role text, "fullName" text)
+language plpgsql security definer
+set search_path = public, extensions
+as $$
+declare s record;
+begin
+  if p_token is null or length(p_token) < 16 then return; end if;
+
+  select s2.user_id, u.username, u.role, u."fullName", u.blocked, s2.expires_at
+    into s
+  from sessions s2 join users u on u.id = s2.user_id
+  where s2.token = p_token;
+
+  if not found then return; end if;
+  if s.expires_at < now() then
+    delete from sessions where token = p_token;
+    return;
+  end if;
+  if s.blocked = 1 then
+    delete from sessions where token = p_token;
+    return;
+  end if;
+
+  -- Actualiza last_used
+  update sessions set last_used_at = now() where token = p_token;
+
+  return query select s.user_id, s.username, s.role, s."fullName";
 end $$;
 
 -- ============================================================
--- 2) FUNCIONES RPC DE AUTENTICACIÓN
---    Todas SECURITY DEFINER → corren con permisos del owner,
---    bypassean RLS de la tabla users.
+-- 4) AUTH RPCs
 -- ============================================================
 
--- 2.1 LOGIN — soporta hashes SHA-256 legacy y los re-hashea a bcrypt
-create or replace function auth_login(p_username text, p_password text)
-returns table(id bigint, username text, role text, "fullName" text, blocked smallint)
+-- LOGIN con lockout + creación de sesión
+-- Retorna: token de sesión + datos de usuario, o lanza excepción si falla
+create or replace function auth_login(p_username text, p_password text, p_remember boolean default false)
+returns table(
+  token text,
+  user_id bigint,
+  username text,
+  role text,
+  "fullName" text,
+  expires_at timestamptz
+)
 language plpgsql security definer
 set search_path = public, extensions
 as $$
 declare
   u record;
   legacy_hash text;
+  failed_count int;
+  new_token text;
+  ttl interval;
+  expires timestamptz;
+  ok boolean := false;
 begin
-  select * into u from users where lower(users.username) = lower(p_username);
-  if not found then return; end if;
-  if u.blocked = 1 then return; end if;
+  -- Sanitizar
+  p_username := lower(trim(coalesce(p_username, '')));
+  if p_username = '' or coalesce(p_password, '') = '' then
+    raise exception 'Usuario y contraseña son requeridos';
+  end if;
 
-  -- Hash bcrypt (formato $2a$/$2b$/$2y$)
+  -- Lockout: ≥5 fallos en últimos 15 min
+  select count(*) into failed_count
+  from login_attempts
+  where lower(username) = p_username
+    and success = false
+    and attempted_at > now() - interval '15 minutes';
+
+  if failed_count >= 5 then
+    insert into login_attempts(username, success) values (p_username, false);
+    raise exception 'Cuenta bloqueada temporalmente por demasiados intentos fallidos. Intente de nuevo en 15 minutos.';
+  end if;
+
+  -- Buscar usuario
+  select * into u from users where lower(users.username) = p_username;
+  if not found then
+    insert into login_attempts(username, success) values (p_username, false);
+    raise exception 'Credenciales inválidas';
+  end if;
+  if u.blocked = 1 then
+    insert into login_attempts(username, success) values (p_username, false);
+    raise exception 'Usuario bloqueado';
+  end if;
+
+  -- Verificar password
   if u."passHash" like '$2%' then
-    if u."passHash" = crypt(p_password, u."passHash") then
-      return query select u.id, u.username, u.role, u."fullName", u.blocked;
+    ok := (u."passHash" = crypt(p_password, u."passHash"));
+  else
+    -- Legacy SHA-256
+    legacy_hash := encode(digest(p_password, 'sha256'), 'hex');
+    ok := (u."passHash" = legacy_hash);
+    if ok then
+      -- Re-hashea a bcrypt
+      update users set "passHash" = crypt(p_password, gen_salt('bf', 10)) where id = u.id;
     end if;
-    return;
   end if;
 
-  -- Hash SHA-256 legacy → verificar y migrar a bcrypt al vuelo
-  legacy_hash := encode(digest(p_password, 'sha256'), 'hex');
-  if u."passHash" = legacy_hash then
-    update users set "passHash" = crypt(p_password, gen_salt('bf', 10)) where id = u.id;
-    return query select u.id, u.username, u.role, u."fullName", u.blocked;
+  if not ok then
+    insert into login_attempts(username, success) values (p_username, false);
+    raise exception 'Credenciales inválidas';
   end if;
-end;
+
+  -- Limpiar attempts fallidos de este usuario
+  delete from login_attempts where lower(username) = p_username and success = false;
+  insert into login_attempts(username, success) values (p_username, true);
+
+  -- Crear sesión
+  new_token := gen_session_token();
+  ttl := case when p_remember then interval '30 days' else interval '8 hours' end;
+  expires := now() + ttl;
+
+  insert into sessions(token, user_id, expires_at) values (new_token, u.id, expires);
+
+  -- Limpieza oportunista de sesiones expiradas
+  delete from sessions where expires_at < now();
+
+  return query select new_token, u.id, u.username, u.role, u."fullName", expires;
+end $$;
+
+-- LOGOUT
+create or replace function auth_logout(p_token text) returns void
+language sql security definer
+set search_path = public, extensions
+as $$
+  delete from sessions where token = p_token;
 $$;
 
--- 2.2 SEMBRAR USUARIOS POR DEFECTO (idempotente, hashea con bcrypt)
+-- VALIDAR SESIÓN (para refresh al cargar la app)
+create or replace function auth_validate(p_token text)
+returns table(user_id bigint, username text, role text, "fullName" text)
+language sql security definer
+set search_path = public, extensions
+as $$
+  select * from validate_session(p_token);
+$$;
+
+-- ENSURE USUARIOS POR DEFECTO
 create or replace function auth_ensure_default_users()
 returns text[] language plpgsql security definer
 set search_path = public, extensions
@@ -96,166 +240,183 @@ begin
     end if;
   end loop;
   return created;
-end;
-$$;
+end $$;
 
--- 2.3 LISTAR USUARIOS (sin passHash)
-create or replace function auth_list_users()
+-- LISTAR USUARIOS (sin passHash)
+create or replace function auth_list_users(p_token text)
 returns table(id bigint, username text, role text, "fullName" text, blocked smallint, "createdAt" timestamptz)
-language sql security definer
+language plpgsql security definer
 set search_path = public, extensions
 as $$
-  select id, username, role, "fullName", blocked, "createdAt" from users order by id;
-$$;
+declare s record;
+begin
+  s := validate_session(p_token);
+  if s.user_id is null then raise exception 'Sesión no válida'; end if;
+  return query select u.id, u.username, u.role, u."fullName", u.blocked, u."createdAt" from users u order by u.id;
+end $$;
 
--- 2.4 CONTAR USUARIOS
-create or replace function auth_user_count()
-returns int language sql security definer
+-- CONTAR USUARIOS (no requiere sesión — necesario para diagnóstico de login)
+create or replace function auth_user_count() returns int
+language sql security definer
 set search_path = public, extensions
 as $$
   select count(*)::int from users;
 $$;
 
--- 2.5 CREAR USUARIO (valida permisos del actor)
+-- CREAR USUARIO
 create or replace function auth_create_user(
-  actor_id bigint,
-  p_username text,
-  p_password text,
-  p_role text,
-  p_full_name text
+  p_token text, p_username text, p_password text, p_role text, p_full_name text
 ) returns bigint
 language plpgsql security definer
 set search_path = public, extensions
 as $$
-declare actor record; new_id bigint;
+declare s record; new_id bigint;
 begin
-  select * into actor from users where id = actor_id and blocked = 0;
-  if not found then raise exception 'Sesión no válida'; end if;
-  if actor.role not in ('SuperAdmin','Admin') then raise exception 'Sin permisos para crear usuarios'; end if;
-  if p_role = 'SuperAdmin' and actor.role <> 'SuperAdmin' then
+  s := validate_session(p_token);
+  if s.user_id is null then raise exception 'Sesión no válida'; end if;
+  if s.role not in ('SuperAdmin','Admin') then raise exception 'Sin permisos para crear usuarios'; end if;
+  if p_role = 'SuperAdmin' and s.role <> 'SuperAdmin' then
     raise exception 'Solo SuperAdmin puede crear otro SuperAdmin';
   end if;
-  if p_role not in ('SuperAdmin','Admin','Operativo') then
-    raise exception 'Rol inválido';
-  end if;
-  if length(coalesce(p_password,'')) < 6 then raise exception 'Contraseña debe tener al menos 6 caracteres'; end if;
+  if p_role not in ('SuperAdmin','Admin','Operativo') then raise exception 'Rol inválido'; end if;
   if length(coalesce(p_username,'')) < 3 then raise exception 'Usuario debe tener al menos 3 caracteres'; end if;
+
+  perform validate_password_policy(p_password);
 
   insert into users(username, "passHash", role, "fullName", blocked)
   values (lower(trim(p_username)), crypt(p_password, gen_salt('bf', 10)), p_role, p_full_name, 0)
   returning id into new_id;
-  return new_id;
-exception when unique_violation then
-  raise exception 'Usuario ya existe';
-end;
-$$;
 
--- 2.6 ACTUALIZAR DATOS DE USUARIO (sin password)
+  insert into "activityLog"(ts, "userId", username, action, detail)
+  values (now(), s.user_id, s.username, 'user.create', format('id=%s role=%s', new_id, p_role));
+
+  return new_id;
+exception when unique_violation then raise exception 'Usuario ya existe';
+end $$;
+
+-- ACTUALIZAR USUARIO
 create or replace function auth_update_user(
-  actor_id bigint, target_id bigint,
+  p_token text, target_id bigint,
   p_username text, p_full_name text, p_role text
 ) returns void
 language plpgsql security definer
 set search_path = public, extensions
 as $$
-declare actor record; target record;
+declare s record; target record;
 begin
-  select * into actor from users where id = actor_id and blocked = 0;
-  if not found then raise exception 'Sesión no válida'; end if;
-  if actor.role not in ('SuperAdmin','Admin') then raise exception 'Sin permisos'; end if;
+  s := validate_session(p_token);
+  if s.user_id is null then raise exception 'Sesión no válida'; end if;
+  if s.role not in ('SuperAdmin','Admin') then raise exception 'Sin permisos'; end if;
 
   select * into target from users where id = target_id;
   if not found then raise exception 'Usuario no existe'; end if;
-  if target.role = 'SuperAdmin' and actor.role <> 'SuperAdmin' then
+  if target.role = 'SuperAdmin' and s.role <> 'SuperAdmin' then
     raise exception 'Solo SuperAdmin puede modificar otro SuperAdmin';
   end if;
-  if p_role = 'SuperAdmin' and actor.role <> 'SuperAdmin' then
+  if p_role = 'SuperAdmin' and s.role <> 'SuperAdmin' then
     raise exception 'Solo SuperAdmin puede asignar rol SuperAdmin';
   end if;
   if p_role not in ('SuperAdmin','Admin','Operativo') then raise exception 'Rol inválido'; end if;
 
   update users set username = lower(trim(p_username)), "fullName" = p_full_name, role = p_role
   where id = target_id;
-exception when unique_violation then
-  raise exception 'Otro usuario ya tiene ese nombre';
-end;
-$$;
 
--- 2.7 CAMBIAR CONTRASEÑA
+  insert into "activityLog"(ts, "userId", username, action, detail)
+  values (now(), s.user_id, s.username, 'user.update', format('id=%s', target_id));
+exception when unique_violation then raise exception 'Otro usuario ya tiene ese nombre';
+end $$;
+
+-- CAMBIAR CONTRASEÑA
 create or replace function auth_change_password(
-  actor_id bigint, target_id bigint, new_password text
+  p_token text, target_id bigint, new_password text
 ) returns void
 language plpgsql security definer
 set search_path = public, extensions
 as $$
-declare actor record; target record;
+declare s record; target record;
 begin
-  select * into actor from users where id = actor_id and blocked = 0;
-  if not found then raise exception 'Sesión no válida'; end if;
+  s := validate_session(p_token);
+  if s.user_id is null then raise exception 'Sesión no válida'; end if;
   select * into target from users where id = target_id;
   if not found then raise exception 'Usuario no existe'; end if;
 
-  if actor.id <> target.id then
-    if actor.role = 'Operativo' then raise exception 'Sin permisos'; end if;
-    if target.role = 'SuperAdmin' and actor.role <> 'SuperAdmin' then
+  if s.user_id <> target.id then
+    if s.role = 'Operativo' then raise exception 'Sin permisos'; end if;
+    if target.role = 'SuperAdmin' and s.role <> 'SuperAdmin' then
       raise exception 'Solo SuperAdmin puede modificar otro SuperAdmin';
     end if;
   end if;
-  if length(coalesce(new_password,'')) < 6 then raise exception 'Contraseña debe tener al menos 6 caracteres'; end if;
+
+  perform validate_password_policy(new_password);
 
   update users set "passHash" = crypt(new_password, gen_salt('bf', 10)) where id = target_id;
-end;
-$$;
 
--- 2.8 BLOQUEAR / DESBLOQUEAR
-create or replace function auth_toggle_block(actor_id bigint, target_id bigint)
-returns smallint language plpgsql security definer
+  -- Invalida todas las sesiones del usuario (forzar re-login)
+  delete from sessions where user_id = target_id;
+
+  insert into "activityLog"(ts, "userId", username, action, detail)
+  values (now(), s.user_id, s.username, 'user.passwd', format('id=%s', target_id));
+end $$;
+
+-- BLOQUEAR / DESBLOQUEAR
+create or replace function auth_toggle_block(p_token text, target_id bigint)
+returns smallint
+language plpgsql security definer
 set search_path = public, extensions
 as $$
-declare actor record; target record; new_state smallint;
+declare s record; target record; new_state smallint;
 begin
-  select * into actor from users where id = actor_id and blocked = 0;
-  if not found then raise exception 'Sesión no válida'; end if;
-  if actor.role not in ('SuperAdmin','Admin') then raise exception 'Sin permisos'; end if;
-  if actor.id = target_id then raise exception 'No puede bloquearse a sí mismo'; end if;
+  s := validate_session(p_token);
+  if s.user_id is null then raise exception 'Sesión no válida'; end if;
+  if s.role not in ('SuperAdmin','Admin') then raise exception 'Sin permisos'; end if;
+  if s.user_id = target_id then raise exception 'No puede bloquearse a sí mismo'; end if;
 
   select * into target from users where id = target_id;
   if not found then raise exception 'Usuario no existe'; end if;
-  if target.role = 'SuperAdmin' and actor.role <> 'SuperAdmin' then
+  if target.role = 'SuperAdmin' and s.role <> 'SuperAdmin' then
     raise exception 'Solo SuperAdmin puede bloquear otro SuperAdmin';
   end if;
 
   new_state := case when target.blocked = 1 then 0 else 1 end;
   update users set blocked = new_state where id = target_id;
-  return new_state;
-end;
-$$;
 
--- 2.9 EXPORT / IMPORT (con passHash, solo SuperAdmin)
-create or replace function auth_admin_export_users(actor_id bigint)
+  -- Si lo bloquea, invalida sus sesiones
+  if new_state = 1 then delete from sessions where user_id = target_id; end if;
+
+  insert into "activityLog"(ts, "userId", username, action, detail)
+  values (now(), s.user_id, s.username,
+          case when new_state = 1 then 'user.block' else 'user.unblock' end,
+          format('id=%s', target_id));
+
+  return new_state;
+end $$;
+
+-- EXPORT / IMPORT (solo SuperAdmin)
+create or replace function auth_admin_export_users(p_token text)
 returns setof users language plpgsql security definer
 set search_path = public, extensions
 as $$
-declare actor record;
+declare s record;
 begin
-  select * into actor from users where id = actor_id and blocked = 0;
-  if not found or actor.role <> 'SuperAdmin' then raise exception 'Solo SuperAdmin'; end if;
+  s := validate_session(p_token);
+  if s.user_id is null or s.role <> 'SuperAdmin' then raise exception 'Solo SuperAdmin'; end if;
   return query select * from users order by id;
-end;
-$$;
+end $$;
 
-create or replace function auth_admin_import_users(actor_id bigint, payload jsonb)
+create or replace function auth_admin_import_users(p_token text, payload jsonb)
 returns int language plpgsql security definer
 set search_path = public, extensions
 as $$
-declare actor record; n int := 0; rec jsonb;
+declare s record; n int := 0; rec jsonb;
 begin
-  select * into actor from users where id = actor_id and blocked = 0;
-  if not found or actor.role <> 'SuperAdmin' then raise exception 'Solo SuperAdmin'; end if;
+  s := validate_session(p_token);
+  if s.user_id is null or s.role <> 'SuperAdmin' then raise exception 'Solo SuperAdmin'; end if;
 
-  delete from users;
+  -- No borra el propio SuperAdmin para no perder acceso
+  delete from users where id <> s.user_id;
   for rec in select * from jsonb_array_elements(payload)
   loop
+    if (rec->>'id')::bigint = s.user_id then continue; end if;
     insert into users(username, "passHash", role, "fullName", blocked, "createdAt")
     values(
       rec->>'username',
@@ -264,65 +425,91 @@ begin
       rec->>'fullName',
       coalesce((rec->>'blocked')::smallint, 0),
       coalesce((rec->>'createdAt')::timestamptz, now())
-    );
+    )
+    on conflict (username) do nothing;
     n := n + 1;
   end loop;
   return n;
-end;
-$$;
-
--- ============================================================
--- 3) GRANTS — solo anon puede invocar las RPCs
--- ============================================================
-revoke all on function auth_login(text,text) from public;
-revoke all on function auth_ensure_default_users() from public;
-revoke all on function auth_list_users() from public;
-revoke all on function auth_user_count() from public;
-revoke all on function auth_create_user(bigint,text,text,text,text) from public;
-revoke all on function auth_update_user(bigint,bigint,text,text,text) from public;
-revoke all on function auth_change_password(bigint,bigint,text) from public;
-revoke all on function auth_toggle_block(bigint,bigint) from public;
-revoke all on function auth_admin_export_users(bigint) from public;
-revoke all on function auth_admin_import_users(bigint,jsonb) from public;
-
-grant execute on function auth_login(text,text) to anon, authenticated;
-grant execute on function auth_ensure_default_users() to anon, authenticated;
-grant execute on function auth_list_users() to anon, authenticated;
-grant execute on function auth_user_count() to anon, authenticated;
-grant execute on function auth_create_user(bigint,text,text,text,text) to anon, authenticated;
-grant execute on function auth_update_user(bigint,bigint,text,text,text) to anon, authenticated;
-grant execute on function auth_change_password(bigint,bigint,text) to anon, authenticated;
-grant execute on function auth_toggle_block(bigint,bigint) to anon, authenticated;
-grant execute on function auth_admin_export_users(bigint) to anon, authenticated;
-grant execute on function auth_admin_import_users(bigint,jsonb) to anon, authenticated;
-
--- ============================================================
--- 4) RLS — BLOQUEAR ACCESO DIRECTO A USERS
--- Las RPCs (SECURITY DEFINER) bypassean RLS.
--- ============================================================
-alter table users enable row level security;
--- Sin policies = nadie con anon key puede SELECT/INSERT/UPDATE/DELETE directo.
--- Todo debe pasar por las RPCs auth_*.
-do $$ begin
-  -- limpia policies si existían de pruebas previas
-  drop policy if exists "users anon all" on users;
 end $$;
 
 -- ============================================================
--- 5) RLS — PROTEGER BITÁCORA (insert/select OK, no update/delete)
+-- 5) PURGA DE BITÁCORA (llamar manualmente o vía cron)
 -- ============================================================
+create or replace function purge_activity_log(p_token text, p_days_keep int default 90)
+returns int language plpgsql security definer
+set search_path = public, extensions
+as $$
+declare s record; deleted_count int;
+begin
+  s := validate_session(p_token);
+  if s.user_id is null or s.role <> 'SuperAdmin' then raise exception 'Solo SuperAdmin'; end if;
+  if p_days_keep < 7 then raise exception 'Mínimo 7 días de retención'; end if;
+
+  with d as (
+    delete from "activityLog" where ts < now() - (p_days_keep || ' days')::interval returning 1
+  ) select count(*)::int into deleted_count from d;
+
+  insert into "activityLog"(ts, "userId", username, action, detail)
+  values (now(), s.user_id, s.username, 'log.purge', format('borrados=%s keep=%s días', deleted_count, p_days_keep));
+  return deleted_count;
+end $$;
+
+-- ============================================================
+-- 6) GRANTS
+-- ============================================================
+revoke all on function auth_login(text,text,boolean) from public;
+revoke all on function auth_logout(text) from public;
+revoke all on function auth_validate(text) from public;
+revoke all on function auth_ensure_default_users() from public;
+revoke all on function auth_user_count() from public;
+revoke all on function auth_list_users(text) from public;
+revoke all on function auth_create_user(text,text,text,text,text) from public;
+revoke all on function auth_update_user(text,bigint,text,text,text) from public;
+revoke all on function auth_change_password(text,bigint,text) from public;
+revoke all on function auth_toggle_block(text,bigint) from public;
+revoke all on function auth_admin_export_users(text) from public;
+revoke all on function auth_admin_import_users(text,jsonb) from public;
+revoke all on function purge_activity_log(text,int) from public;
+
+grant execute on function auth_login(text,text,boolean) to anon, authenticated;
+grant execute on function auth_logout(text) to anon, authenticated;
+grant execute on function auth_validate(text) to anon, authenticated;
+grant execute on function auth_ensure_default_users() to anon, authenticated;
+grant execute on function auth_user_count() to anon, authenticated;
+grant execute on function auth_list_users(text) to anon, authenticated;
+grant execute on function auth_create_user(text,text,text,text,text) to anon, authenticated;
+grant execute on function auth_update_user(text,bigint,text,text,text) to anon, authenticated;
+grant execute on function auth_change_password(text,bigint,text) to anon, authenticated;
+grant execute on function auth_toggle_block(text,bigint) to anon, authenticated;
+grant execute on function auth_admin_export_users(text) to anon, authenticated;
+grant execute on function auth_admin_import_users(text,jsonb) to anon, authenticated;
+grant execute on function purge_activity_log(text,int) to anon, authenticated;
+
+-- ============================================================
+-- 7) RLS — TABLAS SENSIBLES
+-- ============================================================
+
+-- users: SOLO via RPCs
+alter table users enable row level security;
+drop policy if exists "users anon all" on users;
+
+-- sessions: SOLO via RPCs
+alter table sessions enable row level security;
+drop policy if exists "sessions anon all" on sessions;
+
+-- login_attempts: SOLO via RPCs (escritura desde auth_login security definer)
+alter table login_attempts enable row level security;
+drop policy if exists "login_attempts anon all" on login_attempts;
+
+-- activityLog: SELECT/INSERT permitidos para que la app pueda registrar acciones
 alter table "activityLog" enable row level security;
 drop policy if exists "log select" on "activityLog";
 drop policy if exists "log insert" on "activityLog";
 create policy "log select" on "activityLog" for select to anon, authenticated using (true);
 create policy "log insert" on "activityLog" for insert to anon, authenticated with check (true);
--- update/delete: sin policy = denegado
+-- UPDATE/DELETE: bloqueados (sin policy)
 
--- ============================================================
--- 6) RLS habilitado en demás tablas (allow-all por ahora)
--- Esto activa el flag de RLS para satisfacer Supabase y permite
--- restringir más adelante sin migración.
--- ============================================================
+-- Tablas operativas: RLS habilitado con policy permisiva (gap conocido, ver TODO)
 do $$
 declare t text;
 begin
@@ -335,18 +522,81 @@ begin
 end $$;
 
 -- ============================================================
--- 7) Re-hashear usuarios sembrados que aún tengan SHA-256 a bcrypt
--- (la migración al vuelo en auth_login lo hace en el primer login,
---  esto los migra antes para no dejar passHash débil reposando)
+-- 8) INTEGRIDAD REFERENCIAL Y CHECK CONSTRAINTS
 -- ============================================================
--- No podemos rehashear sin conocer el password. Lo dejamos para login al vuelo.
--- Pero sí podemos invalidar passHashes legacy si quieres forzar reset.
--- (Comentado por defecto)
--- update users set "passHash" = null where "passHash" not like '$2%';
+
+-- Foreign keys (ON DELETE SET NULL para no perder historial)
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'rentals_property_fk') then
+    alter table rentals add constraint rentals_property_fk
+      foreign key ("propertyId") references properties(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'rentals_tenant_fk') then
+    alter table rentals add constraint rentals_tenant_fk
+      foreign key ("tenantId") references tenants(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'rentals_agent_fk') then
+    alter table rentals add constraint rentals_agent_fk
+      foreign key ("agentId") references agents(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sales_property_fk') then
+    alter table sales add constraint sales_property_fk
+      foreign key ("propertyId") references properties(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sales_agent_fk') then
+    alter table sales add constraint sales_agent_fk
+      foreign key ("agentId") references agents(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'tenants_property_fk') then
+    alter table tenants add constraint tenants_property_fk
+      foreign key ("propertyId") references properties(id) on delete set null;
+  end if;
+end $$;
+
+-- CHECK constraints
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'rentals_amount_check') then
+    alter table rentals add constraint rentals_amount_check check (amount >= 0 and paid >= 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'rentals_status_check') then
+    alter table rentals add constraint rentals_status_check check (status in ('pagado','pendiente','parcial'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'rentals_period_check') then
+    alter table rentals add constraint rentals_period_check check (year between 2000 and 2200 and month between 1 and 12);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sales_amount_check') then
+    alter table sales add constraint sales_amount_check check (price >= 0 and commission >= 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sales_period_check') then
+    alter table sales add constraint sales_period_check check (year between 2000 and 2200 and month between 1 and 12);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'expenses_amount_check') then
+    alter table expenses add constraint expenses_amount_check check (monthly >= 0 and q1 >= 0 and q2 >= 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'expenses_status_check') then
+    alter table expenses add constraint expenses_status_check check (status in ('pagado','pendiente'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'expenses_period_check') then
+    alter table expenses add constraint expenses_period_check check (year between 2000 and 2200 and month between 1 and 12);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'users_role_check') then
+    alter table users add constraint users_role_check check (role in ('SuperAdmin','Admin','Operativo'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'properties_status_check') then
+    alter table properties add constraint properties_status_check check (status in ('disponible','rentado','vendido') or status is null);
+  end if;
+end $$;
 
 -- ============================================================
--- LISTO. Mensaje de éxito.
+-- 9) ELIMINAR TABLA "distributions" (dead code)
+-- ============================================================
+drop table if exists distributions cascade;
+
+-- ============================================================
+-- LISTO
 -- ============================================================
 do $$ begin
-  raise notice 'Hardening aplicado: bcrypt activo, RLS en users y activityLog, RPCs auth_* disponibles.';
+  raise notice '✓ Hardening v2 aplicado: sesiones server-side, lockout, password policy, FKs, CHECKs.';
 end $$;
