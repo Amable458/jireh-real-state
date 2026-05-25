@@ -9,6 +9,7 @@ import { usePeriod } from '../store/period.js';
 import { fmtMoney, monthName } from '../utils/format.js';
 import { monthlyTotals, yearMonthlySeries } from '../utils/calc.js';
 import { db } from '../db/database.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 
 function StatCard({ icon: Icon, label, value, color, sub }) {
   return (
@@ -32,22 +33,23 @@ export default function Dashboard() {
   const [contractAlerts, setContractAlerts] = useState([]);
   const [pendingRentals, setPendingRentals] = useState([]);
 
-  useEffect(() => {
-    (async () => {
-      setTotals(await monthlyTotals(year, month));
-      setSeries(await yearMonthlySeries(year));
-      const tenants = await db.tenants.toArray();
-      const today = new Date();
-      const in30 = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-      setContractAlerts(tenants.filter((t) => {
-        if (!t.contractEnd) return false;
-        const d = new Date(t.contractEnd);
-        return d >= today && d <= in30;
-      }));
-      const rents = await db.rentals.where({ year, month }).toArray();
-      setPendingRentals(rents.filter((r) => r.status !== 'pagado').slice(0, 5));
-    })();
-  }, [year, month]);
+  const load = async () => {
+    setTotals(await monthlyTotals(year, month));
+    setSeries(await yearMonthlySeries(year));
+    const tenants = await db.tenants.toArray();
+    const today = new Date();
+    const in30 = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+    setContractAlerts(tenants.filter((t) => {
+      if (!t.contractEnd) return false;
+      const d = new Date(t.contractEnd);
+      return d >= today && d <= in30;
+    }));
+    const rents = await db.rentals.where({ year, month }).toArray();
+    setPendingRentals(rents.filter((r) => r.status !== 'pagado').slice(0, 5));
+  };
+
+  useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
+  useRealtimeTable(['rentals', 'sales', 'expenses', 'tenants'], () => load());
 
   if (!totals) return <div className="text-ink-400">Cargando...</div>;
   const negative = totals.surplus < 0;

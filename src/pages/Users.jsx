@@ -10,6 +10,7 @@ import {
   db,
   rpcListUsers, rpcCreateUser, rpcUpdateUser, rpcChangePassword, rpcToggleBlock
 } from '../db/database.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtDateTime } from '../utils/format.js';
 
 const ROLES = ['SuperAdmin', 'Admin', 'Operativo'];
@@ -36,7 +37,8 @@ export default function Users() {
       console.error('Users load error:', e);
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-line */ }, []);
+  useRealtimeTable('activityLog', () => load());
 
   const onAdd = () => { setEditRow(null); setForm(empty()); setErr(''); setOpen(true); };
   const onEdit = (u) => {

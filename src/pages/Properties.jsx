@@ -7,6 +7,7 @@ import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 
 const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', rent: '', sale: '', status: 'disponible', notes: '' });
@@ -40,6 +41,7 @@ export default function Properties() {
     setAgents(await db.agents.toArray());
   };
   useEffect(() => { load(); }, []);
+  useRealtimeTable(['properties', 'tenants', 'agents'], () => load());
 
   const saveProp = async (e) => {
     e.preventDefault();

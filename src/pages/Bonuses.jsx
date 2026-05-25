@@ -8,12 +8,15 @@ import HELP from '../utils/helpContent.jsx';
 import { usePeriod } from '../store/period.js';
 import { fmtMoney, monthName } from '../utils/format.js';
 import { calcBonuses } from '../utils/calc.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 
 export default function Bonuses() {
   const { year, month } = usePeriod();
   const [data, setData] = useState(null);
 
-  useEffect(() => { (async () => setData(await calcBonuses(year, month)))(); }, [year, month]);
+  const load = async () => setData(await calcBonuses(year, month));
+  useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
+  useRealtimeTable(['rentals', 'sales', 'expenses', 'distributionConfig'], () => load());
 
   if (!data) return null;
 

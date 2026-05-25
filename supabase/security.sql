@@ -610,8 +610,28 @@ do $$ begin
 end $$;
 
 -- ============================================================
+-- 10) REALTIME (sincronización en vivo entre dispositivos)
+-- Agrega tablas operativas a la publicación supabase_realtime
+-- ============================================================
+do $$
+declare t text;
+begin
+  for t in select unnest(array['rentals','sales','expenses','properties','tenants','agents','distributionConfig','settings','activityLog'])
+  loop
+    if to_regclass('public.' || quote_ident(t)) is null then continue; end if;
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+      raise notice 'Realtime activado en %', t;
+    exception
+      when duplicate_object then null;
+      when others then raise notice 'No se pudo activar realtime en %: %', t, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+-- ============================================================
 -- LISTO
 -- ============================================================
 do $$ begin
-  raise notice '✓ Hardening v2 aplicado: sesiones server-side, lockout, password policy, FKs, CHECKs.';
+  raise notice '✓ Hardening v2 + Realtime aplicado: sesiones server-side, lockout, password policy, FKs, CHECKs, sync en vivo.';
 end $$;

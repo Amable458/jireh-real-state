@@ -9,6 +9,7 @@ import HELP from '../utils/helpContent.jsx';
 import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 
 const empty = () => ({
@@ -47,6 +48,7 @@ export default function Expenses() {
     setRows(r);
   };
   useEffect(() => { load(); }, [year, month]);
+  useRealtimeTable('expenses', () => load());
 
   const onAdd = () => {
     setEditId(null);

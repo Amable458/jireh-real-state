@@ -9,6 +9,7 @@ import HELP from '../utils/helpContent.jsx';
 import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 
 const STATUS = [
@@ -44,6 +45,7 @@ export default function Rentals() {
     setRows(r); setProps(p); setTenants(t); setAgents(a);
   };
   useEffect(() => { load(); }, [year, month]);
+  useRealtimeTable(['rentals', 'properties', 'tenants', 'agents'], () => load());
 
   const onAdd = () => { setEditId(null); setForm(empty()); setOpen(true); };
   const onEdit = (r) => { setEditId(r.id); setForm({ ...r, amount: r.amount ?? '', paid: r.paid ?? '' }); setOpen(true); };

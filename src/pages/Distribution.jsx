@@ -12,6 +12,7 @@ import { db, logActivity } from '../db/database.js';
 import { fmtMoney, monthName } from '../utils/format.js';
 import { monthlyTotals } from '../utils/calc.js';
 import { applyDistribution, normalizeConfig, makeCategoryId, SYSTEM_BONUS_ID } from '../utils/distribution.js';
+import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 
 const COLORS = ['#dc2626', '#2563eb', '#059669', '#f59e0b', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c'];
 
@@ -26,13 +27,13 @@ export default function Distribution() {
   const [deleteIdx, setDeleteIdx] = useState(null);
   const [msg, setMsg] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      const c = normalizeConfig(await db.distributionConfig.get('default'));
-      setCfg(c); setDraft(c);
-      setTotals(await monthlyTotals(year, month));
-    })();
-  }, [year, month]);
+  const load = async () => {
+    const c = normalizeConfig(await db.distributionConfig.get('default'));
+    setCfg(c); setDraft(c);
+    setTotals(await monthlyTotals(year, month));
+  };
+  useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
+  useRealtimeTable(['distributionConfig', 'rentals', 'sales', 'expenses'], () => load());
 
   if (!cfg || !draft || !totals) return null;
 

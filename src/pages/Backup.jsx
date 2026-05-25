@@ -128,12 +128,12 @@ export default function Backup() {
         actions={<HelpButton content={HELP.backup} />}
       />
 
-      {/* Aviso de arquitectura local */}
-      <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
-        <Info size={20} className="text-amber-700 mt-0.5 flex-shrink-0" />
-        <div className="text-sm text-amber-900">
-          <p className="font-semibold mb-1">Almacenamiento local por dispositivo</p>
-          <p>Este sistema guarda los datos en <b>IndexedDB</b> del navegador. Cada equipo/navegador tiene su propia copia y <b>no se sincroniza automáticamente</b> con otros. Para usar los mismos datos en otro equipo, exporta el respaldo aquí e impórtalo en el otro dispositivo. Si necesita sincronización multi-usuario en tiempo real, requiere migrar a un backend (Supabase / Vercel Postgres).</p>
+      {/* Aviso de arquitectura cloud */}
+      <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 flex items-start gap-3">
+        <Info size={20} className="text-emerald-700 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-emerald-900">
+          <p className="font-semibold mb-1">Datos en la nube con sincronización en tiempo real</p>
+          <p>Los datos viven en <b>Supabase (Postgres)</b> y son los mismos para todos los usuarios y dispositivos. Los cambios se propagan en vivo vía websockets: si alguien crea una renta en otro equipo, la verás al instante sin necesidad de refrescar. El respaldo manual JSON sigue disponible como copia adicional.</p>
         </div>
       </div>
 
