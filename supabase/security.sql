@@ -516,12 +516,14 @@ create policy "log select" on "activityLog" for select to anon, authenticated us
 create policy "log insert" on "activityLog" for insert to anon, authenticated with check (true);
 -- UPDATE/DELETE: bloqueados (sin policy)
 
--- Tablas operativas: RLS habilitado con policy permisiva (gap conocido, ver TODO)
+-- Tablas operativas: RLS habilitado con policy permisiva (gap conocido, ver TODO).
+-- Defensivo: solo procesa tablas que existen (por si alguna fue eliminada).
 do $$
 declare t text;
 begin
-  for t in select unnest(array['rentals','sales','expenses','properties','tenants','agents','distributionConfig','distributions','settings'])
+  for t in select unnest(array['rentals','sales','expenses','properties','tenants','agents','distributionConfig','settings'])
   loop
+    if to_regclass('public.' || quote_ident(t)) is null then continue; end if;
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "anon all" on %I', t);
     execute format('create policy "anon all" on %I for all to anon, authenticated using (true) with check (true)', t);
@@ -597,9 +599,15 @@ begin
 end $$;
 
 -- ============================================================
--- 9) ELIMINAR TABLA "distributions" (dead code)
+-- 9) ELIMINAR TABLA "distributions" (dead code, ya no se usa)
+--    Idempotente: si no existe, no hace nada
 -- ============================================================
-drop table if exists distributions cascade;
+do $$ begin
+  if to_regclass('public.distributions') is not null then
+    drop table distributions cascade;
+    raise notice 'Tabla distributions eliminada (dead code)';
+  end if;
+end $$;
 
 -- ============================================================
 -- LISTO
