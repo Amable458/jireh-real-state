@@ -21,6 +21,16 @@ do $$ begin
   end if;
 end $$;
 
+-- ============================================================
+-- Ingresos recurrentes
+-- recurring: 1 = se autogenera como pendiente cada mes
+-- recurringKey: identificador estable de la "serie" recurrente
+-- ============================================================
+alter table rentals add column if not exists recurring smallint default 0;
+alter table rentals add column if not exists "recurringKey" text;
+
+update rentals set recurring = 0 where recurring is null;
+
 do $$ begin
-  raise notice '✓ Migración de ingresos aplicada: columnas kind y category listas.';
+  raise notice '✓ Migración de ingresos aplicada: kind, category, recurring y recurringKey listas.';
 end $$;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Home, FileText, MessageSquare, MessageSquareText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Home, FileText, MessageSquare, MessageSquareText, Repeat } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -27,14 +27,18 @@ const OTRO_CATEGORIES = [
 const emptyRenta = () => ({
   kind: 'renta', category: 'Renta',
   date: todayISO(), propertyId: '', tenantId: '', agentId: '',
-  amount: '', paid: '', status: 'pendiente', notes: ''
+  amount: '', paid: '', status: 'pendiente', notes: '',
+  recurring: 0, recurringKey: null
 });
 
 const emptyOtro = () => ({
   kind: 'otro', category: 'Por contrato', customCategory: '',
   date: todayISO(), propertyId: '',
-  amount: '', paid: '', status: 'pendiente', notes: ''
+  amount: '', paid: '', status: 'pendiente', notes: '',
+  recurring: 0, recurringKey: null
 });
+
+const genRecurringKey = () => `inc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 export default function Rentals() {
   const { year, month } = usePeriod();
@@ -50,7 +54,36 @@ export default function Rentals() {
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [noteView, setNoteView] = useState({ open: false, text: '' });
 
+  // Copia los ingresos recurrentes del mes anterior que aún no existan en este mes,
+  // generándolos como "pendiente" para cobrar.
+  const ensureRecurring = async () => {
+    const prev = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
+    const [current, previous] = await Promise.all([
+      db.rentals.where({ year, month }).toArray(),
+      db.rentals.where({ year: prev.y, month: prev.m }).toArray()
+    ]);
+    const recurringPrev = previous.filter((r) => r.recurring && r.recurringKey);
+    if (recurringPrev.length === 0) return;
+    const existingKeys = new Set(current.filter((r) => r.recurringKey).map((r) => r.recurringKey));
+    const toClone = recurringPrev.filter((r) => !existingKeys.has(r.recurringKey));
+    if (toClone.length === 0) return;
+    const day = `${year}-${String(month).padStart(2, '0')}-01`;
+    const clones = toClone.map((r) => ({
+      year, month, kind: r.kind, category: r.category,
+      date: day,
+      propertyId: r.propertyId ?? null, propertyName: r.propertyName || '',
+      tenantId: r.tenantId ?? null, tenantName: r.tenantName || '',
+      agentId: r.agentId ?? null, agentName: r.agentName || '',
+      amount: Number(r.amount) || 0, paid: 0, status: 'pendiente',
+      notes: r.notes || '',
+      recurring: 1, recurringKey: r.recurringKey,
+      createdAt: new Date().toISOString()
+    }));
+    await db.rentals.bulkAdd(clones);
+  };
+
   const load = async () => {
+    await ensureRecurring();
     const [r, p, t, a] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
       db.properties.toArray(),
@@ -102,6 +135,9 @@ export default function Rentals() {
         : form.category;
     }
 
+    const recurring = form.recurring ? 1 : 0;
+    const recurringKey = recurring ? (form.recurringKey || genRecurringKey()) : null;
+
     let payload;
     if (isRenta) {
       const tenant = tenants.find((t) => t.id === Number(form.tenantId));
@@ -118,7 +154,8 @@ export default function Rentals() {
         amount: Number(form.amount) || 0,
         paid: Number(form.paid) || 0,
         status: form.status,
-        notes: form.notes || ''
+        notes: form.notes || '',
+        recurring, recurringKey
       };
     } else {
       payload = {
@@ -131,7 +168,8 @@ export default function Rentals() {
         amount: Number(form.amount) || 0,
         paid: Number(form.paid) || 0,
         status: form.status,
-        notes: form.notes || ''
+        notes: form.notes || '',
+        recurring, recurringKey
       };
     }
 
@@ -167,7 +205,12 @@ export default function Rentals() {
     { key: 'date', label: 'Fecha', render: (r) => fmtDate(r.date) },
     { key: 'category', label: 'Categoría', render: (r) => {
       const isRenta = (r.kind || 'renta') === 'renta';
-      return <span className={isRenta ? 'badge-info' : 'badge-slate'}>{r.category || (isRenta ? 'Renta' : 'Otro')}</span>;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span className={isRenta ? 'badge-info' : 'badge-slate'}>{r.category || (isRenta ? 'Renta' : 'Otro')}</span>
+          {r.recurring ? <Repeat size={13} className="text-emerald-600" title="Ingreso recurrente" /> : null}
+        </span>
+      );
     }},
     { key: 'propertyName', label: 'Propiedad', render: (r) => r.propertyName || '—' },
     { key: 'tenantName', label: 'Inquilino', render: (r) => r.tenantName || '—' },
@@ -342,6 +385,14 @@ export default function Rentals() {
               {STATUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
+          <div className="md:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-ink-700">
+              <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked ? 1 : 0 })} className="rounded accent-brand-500" />
+              <Repeat size={14} className="text-ink-500" />
+              Ingreso recurrente — se generará automáticamente como "pendiente" al inicio de cada mes
+            </label>
+          </div>
+
           <div className="md:col-span-2">
             <label className="label">Notas</label>
             <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Comentarios u observaciones de este ingreso" />

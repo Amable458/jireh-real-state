@@ -61,6 +61,9 @@ const HELP = {
       <Section title="Categoría y notas">
         <p>La columna <b>Categoría</b> muestra el tipo de cada ingreso. La columna <b>Notas</b> muestra un ícono: si tiene comentarios, es clickeable para verlos; si no, aparece atenuado.</p>
       </Section>
+      <Section title="Ingresos recurrentes">
+        <p>Marque <b>"Ingreso recurrente"</b> para que el sistema lo genere automáticamente como <b>pendiente</b> al inicio de cada mes (igual que una renta fija o una cuota de administración). Se copia del mes anterior y no se duplica si ya existe. El ícono <span className="text-emerald-600">↻</span> en la columna Categoría indica que un ingreso es recurrente.</p>
+      </Section>
       <Section title="Estados">
         <ul className="list-disc list-inside text-xs space-y-1">
           <li><b>Pagado:</b> ingreso completo (monto total cuenta como ingreso).</li>
