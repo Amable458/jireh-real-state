@@ -395,6 +395,38 @@ begin
   return new_state;
 end $$;
 
+-- ELIMINAR USUARIO (solo SuperAdmin)
+create or replace function auth_delete_user(p_token text, target_id bigint)
+returns void
+language plpgsql security definer
+set search_path = public, extensions
+as $$
+#variable_conflict use_column
+declare s record; target record;
+begin
+  s := validate_session(p_token);
+  if s.user_id is null then raise exception 'Sesión no válida'; end if;
+  if s.role <> 'SuperAdmin' then raise exception 'Solo SuperAdmin puede eliminar usuarios'; end if;
+  if s.user_id = target_id then raise exception 'No puede eliminarse a sí mismo'; end if;
+
+  select * into target from users where id = target_id;
+  if not found then raise exception 'Usuario no existe'; end if;
+
+  -- Evitar borrar el último SuperAdmin activo del sistema
+  if target.role = 'SuperAdmin' then
+    if (select count(*) from users where role = 'SuperAdmin' and blocked = 0) <= 1 then
+      raise exception 'No se puede eliminar el único SuperAdmin activo';
+    end if;
+  end if;
+
+  -- Invalida sus sesiones y elimina el usuario
+  delete from sessions where user_id = target_id;
+  delete from users where id = target_id;
+
+  insert into "activityLog"(ts, "userId", username, action, detail)
+  values (now(), s.user_id, s.username, 'user.delete', format('id=%s username=%s', target_id, target.username));
+end $$;
+
 -- EXPORT / IMPORT (solo SuperAdmin)
 create or replace function auth_admin_export_users(p_token text)
 returns setof users language plpgsql security definer
@@ -474,6 +506,7 @@ revoke all on function auth_create_user(text,text,text,text,text) from public;
 revoke all on function auth_update_user(text,bigint,text,text,text) from public;
 revoke all on function auth_change_password(text,bigint,text) from public;
 revoke all on function auth_toggle_block(text,bigint) from public;
+revoke all on function auth_delete_user(text,bigint) from public;
 revoke all on function auth_admin_export_users(text) from public;
 revoke all on function auth_admin_import_users(text,jsonb) from public;
 revoke all on function purge_activity_log(text,int) from public;
@@ -488,6 +521,7 @@ grant execute on function auth_create_user(text,text,text,text,text) to anon, au
 grant execute on function auth_update_user(text,bigint,text,text,text) to anon, authenticated;
 grant execute on function auth_change_password(text,bigint,text) to anon, authenticated;
 grant execute on function auth_toggle_block(text,bigint) to anon, authenticated;
+grant execute on function auth_delete_user(text,bigint) to anon, authenticated;
 grant execute on function auth_admin_export_users(text) to anon, authenticated;
 grant execute on function auth_admin_import_users(text,jsonb) to anon, authenticated;
 grant execute on function purge_activity_log(text,int) to anon, authenticated;

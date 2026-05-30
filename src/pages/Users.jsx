@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Lock, Unlock, ShieldAlert } from 'lucide-react';
+import { Plus, Edit2, Lock, Unlock, ShieldAlert, Trash2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import DataTable from '../components/DataTable.jsx';
 import Modal, { ConfirmModal } from '../components/Modal.jsx';
@@ -8,7 +8,7 @@ import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
 import {
   db,
-  rpcListUsers, rpcCreateUser, rpcUpdateUser, rpcChangePassword, rpcToggleBlock
+  rpcListUsers, rpcCreateUser, rpcUpdateUser, rpcChangePassword, rpcToggleBlock, rpcDeleteUser
 } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtDateTime } from '../utils/format.js';
@@ -25,6 +25,7 @@ export default function Users() {
   const [form, setForm] = useState(empty());
   const [editRow, setEditRow] = useState(null);
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [delConfirm, setDelConfirm] = useState({ open: false, id: null, username: '' });
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -82,6 +83,15 @@ export default function Users() {
     }
   };
 
+  const doDelete = async (id) => {
+    try {
+      await rpcDeleteUser(token, id);
+      await load();
+    } catch (ex) {
+      alert(ex.message || 'Error al eliminar usuario');
+    }
+  };
+
   const columns = [
     { key: 'username', label: 'Usuario', render: (u) => <span className="font-mono text-sm">{u.username}</span> },
     { key: 'fullName', label: 'Nombre' },
@@ -93,12 +103,18 @@ export default function Users() {
     { key: 'createdAt', label: 'Creado', render: (u) => fmtDateTime(u.createdAt) },
     { key: 'actions', label: '', sortable: false, render: (u) => {
       const cantTouch = (u.role === 'SuperAdmin' && !isSuper) || u.id === user.sub;
+      const canDelete = isSuper && u.id !== user.sub;
       return (
         <div className="flex gap-1 justify-end">
-          <button onClick={() => onEdit(u)} disabled={cantTouch} className="btn-ghost p-1.5 disabled:opacity-30"><Edit2 size={14} /></button>
-          <button onClick={() => setConfirm({ open: true, id: u.id })} disabled={cantTouch} className={`btn-ghost p-1.5 disabled:opacity-30 ${u.blocked ? 'text-emerald-600' : 'text-red-600'}`}>
+          <button onClick={() => onEdit(u)} disabled={cantTouch} title="Editar" className="btn-ghost p-1.5 disabled:opacity-30"><Edit2 size={14} /></button>
+          <button onClick={() => setConfirm({ open: true, id: u.id })} disabled={cantTouch} title={u.blocked ? 'Desbloquear' : 'Bloquear'} className={`btn-ghost p-1.5 disabled:opacity-30 ${u.blocked ? 'text-emerald-600' : 'text-amber-600'}`}>
             {u.blocked ? <Unlock size={14} /> : <Lock size={14} />}
           </button>
+          {canDelete && (
+            <button onClick={() => setDelConfirm({ open: true, id: u.id, username: u.username })} title="Eliminar" className="btn-ghost p-1.5 text-red-600">
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       );
     }}
@@ -174,6 +190,15 @@ export default function Users() {
         }}
         title="Cambiar estado"
         message="¿Confirma cambiar el estado (activo/bloqueado) de este usuario?"
+      />
+
+      <ConfirmModal
+        open={delConfirm.open}
+        onClose={() => setDelConfirm({ open: false, id: null, username: '' })}
+        onConfirm={() => doDelete(delConfirm.id)}
+        title="Eliminar usuario"
+        message={`¿Eliminar permanentemente al usuario "${delConfirm.username}"? Esta acción es irreversible y cerrará todas sus sesiones activas.`}
+        danger
       />
     </div>
   );

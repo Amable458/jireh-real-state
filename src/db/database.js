@@ -222,6 +222,13 @@ export async function rpcToggleBlock(token, targetId) {
   return data;
 }
 
+export async function rpcDeleteUser(token, targetId) {
+  const { error } = await supabase.rpc('auth_delete_user', {
+    p_token: token, target_id: targetId
+  });
+  if (error) throw error;
+}
+
 export async function rpcExportUsers(token) {
   const { data, error } = await supabase.rpc('auth_admin_export_users', { p_token: token });
   if (error) throw error;
