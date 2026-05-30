@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Home, Receipt, PieChart, Award,
-  Building2, FileBarChart, Users, Database, LogOut
+  Building2, FileBarChart, Users, Database, LogOut, KeyRound
 } from 'lucide-react';
 import { useAuth } from '../store/auth.js';
 import { LogoMark } from './Logo.jsx';
+import ChangePasswordModal from './ChangePasswordModal.jsx';
 
 const items = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
@@ -21,6 +23,7 @@ const items = [
 
 export default function Sidebar({ open, onClose }) {
   const { user, logout } = useAuth();
+  const [pwdOpen, setPwdOpen] = useState(false);
 
   return (
     <>
@@ -59,11 +62,16 @@ export default function Sidebar({ open, onClose }) {
             <div className="font-semibold text-white">{user?.fullName}</div>
             <div className="text-brand-400">{user?.role}</div>
           </div>
+          <button onClick={() => { setPwdOpen(true); onClose?.(); }} className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-ink-200 hover:bg-ink-800 hover:text-white transition-colors">
+            <KeyRound size={16} /> Cambiar contraseña
+          </button>
           <button onClick={logout} className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-ink-200 hover:bg-ink-800 hover:text-white transition-colors">
             <LogOut size={16} /> Cerrar sesión
           </button>
         </div>
       </aside>
+
+      <ChangePasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} />
     </>
   );
 }
