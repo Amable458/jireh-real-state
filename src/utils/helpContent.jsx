@@ -52,7 +52,14 @@ const HELP = {
   rentals: (
     <>
       <Section title="¿Qué se registra aquí?">
-        <p>Cada renta cobrable mensual por propiedad/inquilino. Una renta = un cargo del mes.</p>
+        <p>Todos los ingresos del periodo. Al crear uno, elija el tipo:</p>
+        <ul className="list-disc list-inside text-xs space-y-1 mt-1">
+          <li><b>Renta:</b> cobro mensual por propiedad e inquilino, con agente. Cuenta para bonificaciones.</li>
+          <li><b>Otro ingreso:</b> por contrato, por administración de propiedad, o una categoría personalizada. No genera bonificación de agente.</li>
+        </ul>
+      </Section>
+      <Section title="Categoría y notas">
+        <p>La columna <b>Categoría</b> muestra el tipo de cada ingreso. La columna <b>Notas</b> muestra un ícono: si tiene comentarios, es clickeable para verlos; si no, aparece atenuado.</p>
       </Section>
       <Section title="Estados">
         <ul className="list-disc list-inside text-xs space-y-1">

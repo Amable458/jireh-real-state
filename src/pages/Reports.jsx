@@ -88,10 +88,10 @@ export default function Reports() {
       if (m.totals.rentals.length) {
         autoTable(doc, {
           startY: 20,
-          head: [['Fecha', 'Propiedad', 'Inquilino', 'Agente', 'Monto', 'Estado']],
-          body: m.totals.rentals.map((r) => [fmtDate(r.date), r.propertyName || '', r.tenantName || '', r.agentName || '', fmtMoney(r.amount), r.status]),
+          head: [['Fecha', 'Categoría', 'Propiedad', 'Inquilino', 'Agente', 'Monto', 'Estado']],
+          body: m.totals.rentals.map((r) => [fmtDate(r.date), r.category || 'Renta', r.propertyName || '', r.tenantName || '', r.agentName || '', fmtMoney(r.amount), r.status]),
           headStyles: { fillColor: [5, 150, 105] },
-          didDrawPage: () => doc.text('Rentas', 14, 18)
+          didDrawPage: () => doc.text('Ingresos', 14, 18)
         });
       }
       if (m.totals.sales.length) {
@@ -130,7 +130,7 @@ export default function Reports() {
 
     const allRentals = []; const allSales = []; const allExpenses = []; const allBonuses = []; const allDist = [];
     data.months.forEach((m) => {
-      m.totals.rentals.forEach((r) => allRentals.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Propiedad: r.propertyName, Inquilino: r.tenantName, Agente: r.agentName, Monto: r.amount, Pagado: r.paid, Estado: r.status }));
+      m.totals.rentals.forEach((r) => allRentals.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Categoría: r.category || 'Renta', Propiedad: r.propertyName, Inquilino: r.tenantName, Agente: r.agentName, Monto: r.amount, Pagado: r.paid, Estado: r.status, Notas: r.notes || '' }));
       m.totals.sales.forEach((r) => allSales.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Propiedad: r.propertyName, Comprador: r.buyer, Agente: r.agentName, Precio: r.price, Comisión: r.commission }));
       m.totals.expenses.forEach((r) => allExpenses.push({ Año: m.year, Mes: monthName(m.month), Descripción: r.description, Mensual: r.monthly, Q1: r.q1, Q2: r.q2, FechaPago: r.paymentDate, Estado: r.status }));
       m.bonuses.byAgent.forEach((b) => allBonuses.push({ Año: m.year, Mes: monthName(m.month), Agente: b.agentName, Cierres: b.count, MontoGenerado: b.amount, Bonificación: b.bonus }));

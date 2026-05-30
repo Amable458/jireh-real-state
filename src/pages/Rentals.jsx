@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Home, FileText, MessageSquare, MessageSquareText } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -18,8 +18,21 @@ const STATUS = [
   { value: 'pagado', label: 'Pagado' }
 ];
 
-const empty = () => ({
+const OTRO_CATEGORIES = [
+  'Por contrato',
+  'Por administración de propiedad',
+  '__otros__'
+];
+
+const emptyRenta = () => ({
+  kind: 'renta', category: 'Renta',
   date: todayISO(), propertyId: '', tenantId: '', agentId: '',
+  amount: '', paid: '', status: 'pendiente', notes: ''
+});
+
+const emptyOtro = () => ({
+  kind: 'otro', category: 'Por contrato', customCategory: '',
+  date: todayISO(), propertyId: '',
   amount: '', paid: '', status: 'pendiente', notes: ''
 });
 
@@ -30,10 +43,12 @@ export default function Rentals() {
   const [props, setProps] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [chooser, setChooser] = useState(false);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(empty());
+  const [form, setForm] = useState(emptyRenta());
   const [editId, setEditId] = useState(null);
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [noteView, setNoteView] = useState({ open: false, text: '' });
 
   const load = async () => {
     const [r, p, t, a] = await Promise.all([
@@ -47,41 +62,92 @@ export default function Rentals() {
   useEffect(() => { load(); }, [year, month]);
   useRealtimeTable(['rentals', 'properties', 'tenants', 'agents'], () => load());
 
-  const onAdd = () => { setEditId(null); setForm(empty()); setOpen(true); };
-  const onEdit = (r) => { setEditId(r.id); setForm({ ...r, amount: r.amount ?? '', paid: r.paid ?? '' }); setOpen(true); };
+  const onAdd = () => setChooser(true);
+
+  const pickKind = (kind) => {
+    setEditId(null);
+    setForm(kind === 'renta' ? emptyRenta() : emptyOtro());
+    setChooser(false);
+    setOpen(true);
+  };
+
+  const onEdit = (r) => {
+    setEditId(r.id);
+    const kind = r.kind || 'renta';
+    if (kind === 'renta') {
+      setForm({ ...emptyRenta(), ...r, amount: r.amount ?? '', paid: r.paid ?? '' });
+    } else {
+      // Si la categoría no es una de las predefinidas, es personalizada
+      const known = ['Por contrato', 'Por administración de propiedad'];
+      const isCustom = !known.includes(r.category);
+      setForm({
+        ...emptyOtro(), ...r,
+        amount: r.amount ?? '', paid: r.paid ?? '',
+        category: isCustom ? '__otros__' : r.category,
+        customCategory: isCustom ? (r.category || '') : ''
+      });
+    }
+    setOpen(true);
+  };
 
   const save = async (e) => {
     e.preventDefault();
+    const isRenta = form.kind === 'renta';
     const property = props.find((p) => p.id === Number(form.propertyId));
-    const tenant = tenants.find((t) => t.id === Number(form.tenantId));
-    const agent = agents.find((a) => a.id === Number(form.agentId));
-    const payload = {
-      year, month,
-      date: form.date,
-      propertyId: form.propertyId ? Number(form.propertyId) : null,
-      tenantId: form.tenantId ? Number(form.tenantId) : null,
-      agentId: form.agentId ? Number(form.agentId) : null,
-      propertyName: property?.name || form.propertyName || '',
-      tenantName: tenant?.name || form.tenantName || '',
-      agentName: agent?.name || form.agentName || '',
-      amount: Number(form.amount) || 0,
-      paid: Number(form.paid) || 0,
-      status: form.status,
-      notes: form.notes || ''
-    };
+
+    let category = 'Renta';
+    if (!isRenta) {
+      category = form.category === '__otros__'
+        ? (form.customCategory.trim() || 'Otro')
+        : form.category;
+    }
+
+    let payload;
+    if (isRenta) {
+      const tenant = tenants.find((t) => t.id === Number(form.tenantId));
+      const agent = agents.find((a) => a.id === Number(form.agentId));
+      payload = {
+        year, month, kind: 'renta', category: 'Renta',
+        date: form.date,
+        propertyId: form.propertyId ? Number(form.propertyId) : null,
+        tenantId: form.tenantId ? Number(form.tenantId) : null,
+        agentId: form.agentId ? Number(form.agentId) : null,
+        propertyName: property?.name || form.propertyName || '',
+        tenantName: tenant?.name || form.tenantName || '',
+        agentName: agent?.name || form.agentName || '',
+        amount: Number(form.amount) || 0,
+        paid: Number(form.paid) || 0,
+        status: form.status,
+        notes: form.notes || ''
+      };
+    } else {
+      payload = {
+        year, month, kind: 'otro', category,
+        date: form.date,
+        propertyId: form.propertyId ? Number(form.propertyId) : null,
+        tenantId: null, agentId: null,
+        propertyName: property?.name || '',
+        tenantName: '', agentName: '',
+        amount: Number(form.amount) || 0,
+        paid: Number(form.paid) || 0,
+        status: form.status,
+        notes: form.notes || ''
+      };
+    }
+
     if (editId) {
       await db.rentals.update(editId, payload);
-      await logActivity(user.sub, user.username, 'rental.update', `id=${editId}`);
+      await logActivity(user.sub, user.username, 'income.update', `id=${editId} kind=${payload.kind}`);
     } else {
       const id = await db.rentals.add({ ...payload, createdAt: new Date().toISOString() });
-      await logActivity(user.sub, user.username, 'rental.create', `id=${id}`);
+      await logActivity(user.sub, user.username, 'income.create', `id=${id} kind=${payload.kind}`);
     }
     setOpen(false); load();
   };
 
   const remove = async (id) => {
     await db.rentals.delete(id);
-    await logActivity(user.sub, user.username, 'rental.delete', `id=${id}`);
+    await logActivity(user.sub, user.username, 'income.delete', `id=${id}`);
     load();
   };
 
@@ -99,14 +165,28 @@ export default function Rentals() {
 
   const columns = [
     { key: 'date', label: 'Fecha', render: (r) => fmtDate(r.date) },
-    { key: 'propertyName', label: 'Propiedad' },
-    { key: 'tenantName', label: 'Inquilino' },
-    { key: 'agentName', label: 'Agente' },
+    { key: 'category', label: 'Categoría', render: (r) => {
+      const isRenta = (r.kind || 'renta') === 'renta';
+      return <span className={isRenta ? 'badge-info' : 'badge-slate'}>{r.category || (isRenta ? 'Renta' : 'Otro')}</span>;
+    }},
+    { key: 'propertyName', label: 'Propiedad', render: (r) => r.propertyName || '—' },
+    { key: 'tenantName', label: 'Inquilino', render: (r) => r.tenantName || '—' },
+    { key: 'agentName', label: 'Agente', render: (r) => r.agentName || '—' },
     { key: 'amount', label: 'Monto', render: (r) => fmtMoney(r.amount), cellClassName: 'font-medium' },
     { key: 'paid', label: 'Pagado', render: (r) => fmtMoney(r.paid) },
     { key: 'status', label: 'Estado', render: (r) => {
       const c = r.status === 'pagado' ? 'badge-success' : r.status === 'parcial' ? 'badge-warning' : 'badge-danger';
       return <span className={c}>{r.status}</span>;
+    }},
+    { key: 'notes', label: 'Notas', sortable: false, render: (r) => {
+      const has = r.notes && r.notes.trim();
+      return has ? (
+        <button onClick={() => setNoteView({ open: true, text: r.notes })} title="Ver nota" className="text-brand-600 hover:text-brand-800">
+          <MessageSquareText size={16} />
+        </button>
+      ) : (
+        <span title="Sin notas" className="text-ink-300"><MessageSquare size={16} /></span>
+      );
     }},
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
@@ -116,15 +196,17 @@ export default function Rentals() {
     )}
   ];
 
+  const isRenta = form.kind === 'renta';
+
   return (
     <div>
       <PageHeader
-        title="Ingresos por Renta"
-        subtitle="Registro de rentas mensuales"
+        title="Ingresos"
+        subtitle="Rentas y otros ingresos del periodo"
         actions={<>
           <HelpButton content={HELP.rentals} />
           <PeriodPicker />
-          <button className="btn-primary" onClick={onAdd}><Plus size={16} /> Nueva renta</button>
+          <button className="btn-primary" onClick={onAdd}><Plus size={16} /> Nuevo ingreso</button>
         </>}
       />
 
@@ -147,9 +229,38 @@ export default function Rentals() {
         <DataTable columns={columns} rows={rows} />
       </div>
 
+      {/* Selector de tipo de ingreso */}
+      <Modal
+        open={chooser} onClose={() => setChooser(false)}
+        title="¿Qué tipo de ingreso desea registrar?"
+        size="md"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            onClick={() => pickKind('renta')}
+            className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-ink-200 hover:border-brand-500 hover:bg-brand-50 transition-colors"
+          >
+            <div className="bg-brand-500 text-ink-900 p-3 rounded-lg"><Home size={26} /></div>
+            <span className="font-semibold text-ink-800">Renta</span>
+            <span className="text-xs text-ink-500 text-center">Cobro mensual por propiedad e inquilino. Cuenta para bonificaciones.</span>
+          </button>
+          <button
+            onClick={() => pickKind('otro')}
+            className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-ink-200 hover:border-brand-500 hover:bg-brand-50 transition-colors"
+          >
+            <div className="bg-ink-800 text-white p-3 rounded-lg"><FileText size={26} /></div>
+            <span className="font-semibold text-ink-800">Otro ingreso</span>
+            <span className="text-xs text-ink-500 text-center">Por contrato, administración de propiedad u otra categoría.</span>
+          </button>
+        </div>
+      </Modal>
+
+      {/* Formulario de ingreso */}
       <Modal
         open={open} onClose={() => setOpen(false)}
-        title={editId ? 'Editar renta' : 'Nueva renta'}
+        title={editId
+          ? (isRenta ? 'Editar renta' : 'Editar ingreso')
+          : (isRenta ? 'Nueva renta' : 'Nuevo ingreso')}
         size="lg"
         footer={<>
           <button className="btn-secondary" onClick={() => setOpen(false)}>Cancelar</button>
@@ -157,31 +268,66 @@ export default function Rentals() {
         </>}
       >
         <form onSubmit={save} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Indicador de tipo */}
+          <div className="md:col-span-2">
+            <span className={`badge ${isRenta ? 'badge-info' : 'badge-slate'}`}>
+              {isRenta ? 'Ingreso por renta' : 'Otro ingreso'}
+            </span>
+          </div>
+
           <div>
             <label className="label">Fecha</label>
             <input type="date" className="input" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           </div>
+
+          {/* Categoría — solo para "otro" */}
+          {!isRenta && (
+            <div>
+              <label className="label">Categoría</label>
+              <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <option value="Por contrato">Por contrato</option>
+                <option value="Por administración de propiedad">Por administración de propiedad</option>
+                <option value="__otros__">Otros (especificar)</option>
+              </select>
+            </div>
+          )}
+
+          {!isRenta && form.category === '__otros__' && (
+            <div className="md:col-span-2">
+              <label className="label">Especifique la categoría</label>
+              <input className="input" required value={form.customCategory} placeholder="Escriba la categoría del ingreso"
+                onChange={(e) => setForm({ ...form, customCategory: e.target.value })} />
+            </div>
+          )}
+
           <div>
-            <label className="label">Propiedad</label>
+            <label className="label">Propiedad {isRenta ? '' : '(opcional)'}</label>
             <select className="input" value={form.propertyId} onChange={(e) => setForm({ ...form, propertyId: e.target.value })}>
               <option value="">— seleccione —</option>
               {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="label">Inquilino</label>
-            <select className="input" value={form.tenantId} onChange={(e) => setForm({ ...form, tenantId: e.target.value })}>
-              <option value="">— seleccione —</option>
-              {filteredTenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Agente que cerró</label>
-            <select className="input" value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })}>
-              <option value="">— seleccione —</option>
-              {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
+
+          {/* Inquilino y Agente — solo para renta */}
+          {isRenta && (
+            <div>
+              <label className="label">Inquilino</label>
+              <select className="input" value={form.tenantId} onChange={(e) => setForm({ ...form, tenantId: e.target.value })}>
+                <option value="">— seleccione —</option>
+                {filteredTenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
+          {isRenta && (
+            <div>
+              <label className="label">Agente que cerró</label>
+              <select className="input" value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })}>
+                <option value="">— seleccione —</option>
+                {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="label">Monto (DOP)</label>
             <input type="number" step="0.01" className="input" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
@@ -198,16 +344,25 @@ export default function Rentals() {
           </div>
           <div className="md:col-span-2">
             <label className="label">Notas</label>
-            <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Comentarios u observaciones de este ingreso" />
           </div>
         </form>
+      </Modal>
+
+      {/* Visor de nota */}
+      <Modal
+        open={noteView.open} onClose={() => setNoteView({ open: false, text: '' })}
+        title="Nota del ingreso" size="sm"
+        footer={<button className="btn-primary" onClick={() => setNoteView({ open: false, text: '' })}>Cerrar</button>}
+      >
+        <p className="text-sm text-ink-700 whitespace-pre-wrap">{noteView.text}</p>
       </Modal>
 
       <ConfirmModal
         open={confirm.open}
         onClose={() => setConfirm({ open: false, id: null })}
         onConfirm={() => remove(confirm.id)}
-        title="Eliminar renta"
+        title="Eliminar ingreso"
         message="¿Seguro que desea eliminar este registro? Esta acción no se puede deshacer."
         danger
       />

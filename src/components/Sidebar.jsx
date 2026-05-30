@@ -10,7 +10,7 @@ import ChangePasswordModal from './ChangePasswordModal.jsx';
 
 const items = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
-  { to: '/ingresos', label: 'Ingresos por Renta', icon: DollarSign, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
+  { to: '/ingresos', label: 'Ingresos', icon: DollarSign, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/ventas', label: 'Ingresos por Venta', icon: Home, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/gastos', label: 'Gastos Mensuales', icon: Receipt, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/distribucion', label: 'Distribución de Fondos', icon: PieChart, roles: ['SuperAdmin', 'Admin'] },

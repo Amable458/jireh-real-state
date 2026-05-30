@@ -40,7 +40,10 @@ export async function calcBonuses(year, month) {
   const bonusPercent = getBonusPercent(cfg);
   if (!cfg || t.surplus <= 0) return { pool: 0, totalRentals: 0, byAgent: [], surplus: t.surplus, bonusPercent };
   const pool = (t.surplus * bonusPercent) / 100;
-  const closed = t.rentals.filter((r) => r.status === 'pagado' || r.status === 'parcial');
+  // Solo rentas reales (no "otros" ingresos) cuentan como cierres de agente
+  const closed = t.rentals.filter((r) =>
+    (r.kind || 'renta') === 'renta' && (r.status === 'pagado' || r.status === 'parcial')
+  );
   const byAgentMap = new Map();
   for (const r of closed) {
     if (!r.agentId) continue;
