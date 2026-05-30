@@ -14,7 +14,7 @@ const items = [
   { to: '/distribucion', label: 'Distribución de Fondos', icon: PieChart, roles: ['SuperAdmin', 'Admin'] },
   { to: '/bonificaciones', label: 'Bonificaciones', icon: Award, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/propiedades', label: 'Propiedades e Inquilinos', icon: Building2, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
-  { to: '/reportes', label: 'Reportes', icon: FileBarChart, roles: ['SuperAdmin', 'Admin'] },
+  { to: '/reportes', label: 'Reportes', icon: FileBarChart, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/usuarios', label: 'Usuarios', icon: Users, roles: ['SuperAdmin', 'Admin'] },
   { to: '/respaldo', label: 'Respaldo', icon: Database, roles: ['SuperAdmin'] }
 ];

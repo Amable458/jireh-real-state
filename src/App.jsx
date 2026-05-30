@@ -60,9 +60,7 @@ export default function App() {
             </ProtectedRoute>
           } />
           <Route path="/reportes" element={
-            <ProtectedRoute roles={['SuperAdmin', 'Admin']}>
-              <Suspense fallback={<PageFallback />}><Reports /></Suspense>
-            </ProtectedRoute>
+            <Suspense fallback={<PageFallback />}><Reports /></Suspense>
           } />
           <Route path="/usuarios" element={
             <ProtectedRoute roles={['SuperAdmin', 'Admin']}>
