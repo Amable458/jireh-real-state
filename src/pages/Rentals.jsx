@@ -10,7 +10,10 @@ import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
-import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
+import { useSettings } from '../store/settings.js';
+import { fmtDate, todayISO } from '../utils/format.js';
+import { fmtCur, recCurrency } from '../utils/currency.js';
+import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const STATUS = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -18,16 +21,11 @@ const STATUS = [
   { value: 'pagado', label: 'Pagado' }
 ];
 
-const OTRO_CATEGORIES = [
-  'Por contrato',
-  'Por administración de propiedad',
-  '__otros__'
-];
-
 const emptyRenta = () => ({
   kind: 'renta', category: 'Renta',
   date: todayISO(), propertyId: '', tenantId: '', agentId: '',
   amount: '', paid: '', status: 'pendiente', notes: '',
+  currency: 'DOP', exchangeRate: '',
   recurring: 0, recurringKey: null
 });
 
@@ -35,6 +33,7 @@ const emptyOtro = () => ({
   kind: 'otro', category: 'Por contrato', customCategory: '',
   date: todayISO(), propertyId: '',
   amount: '', paid: '', status: 'pendiente', notes: '',
+  currency: 'DOP', exchangeRate: '',
   recurring: 0, recurringKey: null
 });
 
@@ -53,6 +52,8 @@ export default function Rentals() {
   const [editId, setEditId] = useState(null);
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [noteView, setNoteView] = useState({ open: false, text: '' });
+  const [curFilter, setCurFilter] = useState('all'); // all | DOP | USD
+  const { usdToDop } = useSettings();
 
   // Copia los ingresos recurrentes del mes anterior que aún no existan en este mes,
   // generándolos como "pendiente" para cobrar.
@@ -75,6 +76,7 @@ export default function Rentals() {
       tenantId: r.tenantId ?? null, tenantName: r.tenantName || '',
       agentId: r.agentId ?? null, agentName: r.agentName || '',
       amount: Number(r.amount) || 0, paid: 0, status: 'pendiente',
+      currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? null,
       notes: r.notes || '',
       recurring: 1, recurringKey: r.recurringKey,
       createdAt: new Date().toISOString()
@@ -138,6 +140,9 @@ export default function Rentals() {
     const recurring = form.recurring ? 1 : 0;
     const recurringKey = recurring ? (form.recurringKey || genRecurringKey()) : null;
 
+    const currency = form.currency === 'USD' ? 'USD' : 'DOP';
+    const exchangeRate = currency === 'USD' ? (Number(form.exchangeRate) || usdToDop) : null;
+
     let payload;
     if (isRenta) {
       const tenant = tenants.find((t) => t.id === Number(form.tenantId));
@@ -154,6 +159,7 @@ export default function Rentals() {
         amount: Number(form.amount) || 0,
         paid: Number(form.paid) || 0,
         status: form.status,
+        currency, exchangeRate,
         notes: form.notes || '',
         recurring, recurringKey
       };
@@ -168,6 +174,7 @@ export default function Rentals() {
         amount: Number(form.amount) || 0,
         paid: Number(form.paid) || 0,
         status: form.status,
+        currency, exchangeRate,
         notes: form.notes || '',
         recurring, recurringKey
       };
@@ -194,11 +201,22 @@ export default function Rentals() {
     [tenants, form.propertyId]
   );
 
+  const visibleRows = useMemo(() =>
+    curFilter === 'all' ? rows : rows.filter((r) => recCurrency(r) === curFilter),
+    [rows, curFilter]
+  );
+
+  // Totales por moneda
   const totals = useMemo(() => {
-    const paid = rows.filter((r) => r.status === 'pagado').reduce((s, r) => s + (r.amount || 0), 0);
-    const partial = rows.filter((r) => r.status === 'parcial').reduce((s, r) => s + (r.paid || 0), 0);
-    const pending = rows.filter((r) => r.status === 'pendiente').reduce((s, r) => s + (r.amount || 0), 0);
-    return { paid, partial, pending };
+    const mk = () => ({ paid: 0, partial: 0, pending: 0 });
+    const t = { DOP: mk(), USD: mk() };
+    for (const r of rows) {
+      const c = recCurrency(r);
+      if (r.status === 'pagado') t[c].paid += Number(r.amount) || 0;
+      else if (r.status === 'parcial') t[c].partial += Number(r.paid) || 0;
+      else t[c].pending += Number(r.amount) || 0;
+    }
+    return t;
   }, [rows]);
 
   const columns = [
@@ -215,8 +233,11 @@ export default function Rentals() {
     { key: 'propertyName', label: 'Propiedad', render: (r) => r.propertyName || '—' },
     { key: 'tenantName', label: 'Inquilino', render: (r) => r.tenantName || '—' },
     { key: 'agentName', label: 'Agente', render: (r) => r.agentName || '—' },
-    { key: 'amount', label: 'Monto', render: (r) => fmtMoney(r.amount), cellClassName: 'font-medium' },
-    { key: 'paid', label: 'Pagado', render: (r) => fmtMoney(r.paid) },
+    { key: 'currency', label: 'Moneda', render: (r) => (
+      <span className={recCurrency(r) === 'USD' ? 'badge-warning' : 'badge-slate'}>{recCurrency(r)}</span>
+    )},
+    { key: 'amount', label: 'Monto', render: (r) => fmtCur(r.amount, recCurrency(r)), cellClassName: 'font-medium' },
+    { key: 'paid', label: 'Pagado', render: (r) => fmtCur(r.paid, recCurrency(r)) },
     { key: 'status', label: 'Estado', render: (r) => {
       const c = r.status === 'pagado' ? 'badge-success' : r.status === 'parcial' ? 'badge-warning' : 'badge-danger';
       return <span className={c}>{r.status}</span>;
@@ -254,22 +275,31 @@ export default function Rentals() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Pagado</p>
-          <p className="text-xl font-bold text-emerald-700">{fmtMoney(totals.paid)}</p>
-        </div>
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Parcial</p>
-          <p className="text-xl font-bold text-amber-700">{fmtMoney(totals.partial)}</p>
-        </div>
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Pendiente</p>
-          <p className="text-xl font-bold text-red-700">{fmtMoney(totals.pending)}</p>
-        </div>
+        {[
+          { key: 'paid', label: 'Pagado', color: 'text-emerald-700' },
+          { key: 'partial', label: 'Parcial', color: 'text-amber-700' },
+          { key: 'pending', label: 'Pendiente', color: 'text-red-700' }
+        ].map((c) => (
+          <div key={c.key} className="card card-body">
+            <p className="text-xs text-ink-500 uppercase font-semibold mb-1">{c.label}</p>
+            <p className={`text-lg font-bold ${c.color}`}>{fmtCur(totals.DOP[c.key], 'DOP')}</p>
+            {totals.USD[c.key] > 0 && (
+              <p className={`text-sm font-semibold ${c.color} opacity-80`}>{fmtCur(totals.USD[c.key], 'USD')}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       <div className="card card-body">
-        <DataTable columns={columns} rows={rows} />
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm text-ink-500">Moneda:</span>
+          <select className="input py-1.5 w-40" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
+            <option value="all">Todas</option>
+            <option value="DOP">Solo RD$</option>
+            <option value="USD">Solo US$</option>
+          </select>
+        </div>
+        <DataTable columns={columns} rows={visibleRows} />
       </div>
 
       {/* Selector de tipo de ingreso */}
@@ -371,8 +401,13 @@ export default function Rentals() {
             </div>
           )}
 
+          <CurrencyFields
+            currency={form.currency}
+            exchangeRate={form.exchangeRate}
+            onChange={(patch) => setForm({ ...form, ...patch })}
+          />
           <div>
-            <label className="label">Monto (DOP)</label>
+            <label className="label">Monto ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
             <input type="number" step="0.01" className="input" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </div>
           <div>

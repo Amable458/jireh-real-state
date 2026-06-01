@@ -40,6 +40,12 @@ const HELP = {
       <Section title="Gráfica anual">
         <p>Compara ingresos, gastos y excedente de los 12 meses del año seleccionado.</p>
       </Section>
+      <Section title="Doble moneda (RD$ / US$)">
+        <p>Use el selector de vista arriba: <b>RD$</b>, <b>US$</b>, <b>Ambas</b> (tarjetas separadas por moneda) o <b>Convertido a RD$</b> (todo unificado a pesos).</p>
+        <Formula>Convertido a RD$ = monto USD × tasa de cada transacción</Formula>
+        <p>Cada transacción guarda la tasa usada en su momento, por lo que los históricos no cambian aunque ajuste la tasa global. La tasa USD→DOP se edita desde el botón ✎ junto a "Tasa USD → DOP".</p>
+      </Section>
+      <Note>Distribución y Bonificaciones siempre operan sobre el excedente <b>consolidado en RD$</b>, porque un pool no puede mezclar monedas sin convertir.</Note>
       <Section title="Alertas">
         <ul className="list-disc list-inside text-xs">
           <li><b>Contratos por vencer:</b> inquilinos cuyo <code>contractEnd</code> cae en los próximos 30 días.</li>

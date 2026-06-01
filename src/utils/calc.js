@@ -1,5 +1,24 @@
 import { db } from '../db/database.js';
 import { getBonusPercent } from './distribution.js';
+import { recCurrency, toBase, DEFAULT_RATE } from './currency.js';
+
+async function getGlobalRate() {
+  try {
+    const s = await db.settings.get('app');
+    return Number(s?.usdToDop) || DEFAULT_RATE;
+  } catch {
+    return DEFAULT_RATE;
+  }
+}
+
+function blankAgg() {
+  return {
+    rentalsPaid: 0, rentalsPartial: 0, rentalsPending: 0,
+    salesAmount: 0, commissions: 0,
+    expensesAll: 0, expensesPaid: 0,
+    totalIncome: 0, surplus: 0
+  };
+}
 
 export async function monthlyTotals(year, month) {
   const [rentals, sales, expenses] = await Promise.all([
@@ -7,21 +26,55 @@ export async function monthlyTotals(year, month) {
     db.sales.where({ year, month }).toArray(),
     db.expenses.where({ year, month }).toArray()
   ]);
-  const rentalsPaid = rentals.filter((r) => r.status === 'pagado').reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const rentalsPartial = rentals.filter((r) => r.status === 'parcial').reduce((s, r) => s + (Number(r.paid) || 0), 0);
-  const rentalsPending = rentals.filter((r) => r.status === 'pendiente').reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const salesAmount = sales.reduce((s, r) => s + (Number(r.price) || 0), 0);
-  const commissions = sales.reduce((s, r) => s + (Number(r.commission) || 0), 0);
-  const expensesPaid = expenses.filter((e) => e.status === 'pagado').reduce((s, e) => s + (Number(e.monthly) || 0), 0);
-  const expensesAll = expenses.reduce((s, e) => s + (Number(e.monthly) || 0), 0);
-  const totalIncome = rentalsPaid + rentalsPartial + salesAmount;
-  const surplus = totalIncome - expensesAll;
+  const rate = await getGlobalRate();
+
+  const cur = { DOP: blankAgg(), USD: blankAgg() };  // montos en su moneda nativa
+  const base = blankAgg();                            // todo convertido a DOP
+
+  for (const r of rentals) {
+    const c = recCurrency(r);
+    if (r.status === 'pagado') {
+      cur[c].rentalsPaid += Number(r.amount) || 0;
+      base.rentalsPaid += toBase(r.amount, r, rate);
+    } else if (r.status === 'parcial') {
+      cur[c].rentalsPartial += Number(r.paid) || 0;
+      base.rentalsPartial += toBase(r.paid, r, rate);
+    } else {
+      cur[c].rentalsPending += Number(r.amount) || 0;
+      base.rentalsPending += toBase(r.amount, r, rate);
+    }
+  }
+
+  for (const s of sales) {
+    const c = recCurrency(s);
+    cur[c].salesAmount += Number(s.price) || 0;
+    cur[c].commissions += Number(s.commission) || 0;
+    base.salesAmount += toBase(s.price, s, rate);
+    base.commissions += toBase(s.commission, s, rate);
+  }
+
+  for (const e of expenses) {
+    const c = recCurrency(e);
+    cur[c].expensesAll += Number(e.monthly) || 0;
+    base.expensesAll += toBase(e.monthly, e, rate);
+    if (e.status === 'pagado') {
+      cur[c].expensesPaid += Number(e.monthly) || 0;
+      base.expensesPaid += toBase(e.monthly, e, rate);
+    }
+  }
+
+  for (const c of ['DOP', 'USD']) {
+    cur[c].totalIncome = cur[c].rentalsPaid + cur[c].rentalsPartial + cur[c].salesAmount;
+    cur[c].surplus = cur[c].totalIncome - cur[c].expensesAll;
+  }
+  base.totalIncome = base.rentalsPaid + base.rentalsPartial + base.salesAmount;
+  base.surplus = base.totalIncome - base.expensesAll;
+
+  // Campos planos = consolidado a DOP (compatibilidad con Distribución y Bonificaciones)
   return {
-    rentals, sales, expenses,
-    rentalsPaid, rentalsPartial, rentalsPending,
-    salesAmount, commissions,
-    expensesPaid, expensesAll,
-    totalIncome, surplus
+    rentals, sales, expenses, rate,
+    cur,
+    ...base
   };
 }
 
@@ -29,7 +82,12 @@ export async function yearMonthlySeries(year) {
   const result = [];
   for (let m = 1; m <= 12; m++) {
     const t = await monthlyTotals(year, m);
-    result.push({ month: m, income: t.totalIncome, expenses: t.expensesAll, surplus: t.surplus });
+    result.push({
+      month: m,
+      dop: { income: t.cur.DOP.totalIncome, expenses: t.cur.DOP.expensesAll, surplus: t.cur.DOP.surplus },
+      usd: { income: t.cur.USD.totalIncome, expenses: t.cur.USD.expensesAll, surplus: t.cur.USD.surplus },
+      base: { income: t.totalIncome, expenses: t.expensesAll, surplus: t.surplus }
+    });
   }
   return result;
 }
@@ -38,6 +96,7 @@ export async function calcBonuses(year, month) {
   const cfg = await db.distributionConfig.get('default');
   const t = await monthlyTotals(year, month);
   const bonusPercent = getBonusPercent(cfg);
+  // El pool se calcula sobre el excedente consolidado en DOP
   if (!cfg || t.surplus <= 0) return { pool: 0, totalRentals: 0, byAgent: [], surplus: t.surplus, bonusPercent };
   const pool = (t.surplus * bonusPercent) / 100;
   // Solo rentas reales (no "otros" ingresos) cuentan como cierres de agente
@@ -49,7 +108,8 @@ export async function calcBonuses(year, month) {
     if (!r.agentId) continue;
     const cur = byAgentMap.get(r.agentId) || { agentId: r.agentId, count: 0, amount: 0 };
     cur.count += 1;
-    cur.amount += Number(r.amount) || 0;
+    // Monto generado convertido a DOP para comparar peras con peras
+    cur.amount += toBase(r.amount, r, t.rate);
     byAgentMap.set(r.agentId, cur);
   }
   const totalRentals = Array.from(byAgentMap.values()).reduce((s, x) => s + x.count, 0);
@@ -62,5 +122,4 @@ export async function calcBonuses(year, month) {
   return { pool, totalRentals, byAgent, surplus: t.surplus, bonusPercent };
 }
 
-// Re-export para compatibilidad
 export { applyDistribution } from './distribution.js';

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import ProtectedRoute from './router/ProtectedRoute.jsx';
 import { useAuth } from './store/auth.js';
+import { useSettings } from './store/settings.js';
 
 // Login no se hace lazy (es la pantalla más común antes de autenticar)
 import Login from './pages/Login.jsx';
@@ -29,7 +30,8 @@ function PageFallback() {
 
 function HydrateGate({ children }) {
   const { ready, hydrate } = useAuth();
-  useEffect(() => { hydrate(); /* eslint-disable-line */ }, []);
+  const loadSettings = useSettings((s) => s.load);
+  useEffect(() => { hydrate(); loadSettings(); /* eslint-disable-line */ }, []);
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-50">

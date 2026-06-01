@@ -31,7 +31,7 @@ export default function Bonuses() {
     <div>
       <PageHeader
         title="Bonificaciones"
-        subtitle={`${monthName(month)} ${year} — pool calculado del excedente mensual`}
+        subtitle={`${monthName(month)} ${year} — pool calculado del excedente mensual (convertido a RD$)`}
         actions={<><HelpButton content={HELP.bonuses} /><PeriodPicker /></>}
       />
 

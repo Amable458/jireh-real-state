@@ -10,16 +10,21 @@ import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
-import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
+import { useSettings } from '../store/settings.js';
+import { fmtDate, todayISO } from '../utils/format.js';
+import { fmtCur, recCurrency } from '../utils/currency.js';
+import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const empty = () => ({
   date: todayISO(), propertyId: '', agentId: '',
-  buyer: '', price: '', commission: '', notes: ''
+  buyer: '', price: '', commission: '', notes: '',
+  currency: 'DOP', exchangeRate: ''
 });
 
 export default function Sales() {
   const { year, month } = usePeriod();
   const { user } = useAuth();
+  const { usdToDop } = useSettings();
   const [rows, setRows] = useState([]);
   const [props, setProps] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -27,6 +32,7 @@ export default function Sales() {
   const [form, setForm] = useState(empty());
   const [editId, setEditId] = useState(null);
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [curFilter, setCurFilter] = useState('all');
 
   const load = async () => {
     const [s, p, a] = await Promise.all([
@@ -40,12 +46,18 @@ export default function Sales() {
   useRealtimeTable(['sales', 'properties', 'agents'], () => load());
 
   const onAdd = () => { setEditId(null); setForm(empty()); setOpen(true); };
-  const onEdit = (r) => { setEditId(r.id); setForm({ ...r, price: r.price ?? '', commission: r.commission ?? '' }); setOpen(true); };
+  const onEdit = (r) => {
+    setEditId(r.id);
+    setForm({ ...empty(), ...r, price: r.price ?? '', commission: r.commission ?? '', currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? '' });
+    setOpen(true);
+  };
 
   const save = async (e) => {
     e.preventDefault();
     const property = props.find((p) => p.id === Number(form.propertyId));
     const agent = agents.find((a) => a.id === Number(form.agentId));
+    const currency = form.currency === 'USD' ? 'USD' : 'DOP';
+    const exchangeRate = currency === 'USD' ? (Number(form.exchangeRate) || usdToDop) : null;
     const payload = {
       year, month,
       date: form.date,
@@ -56,6 +68,7 @@ export default function Sales() {
       buyer: form.buyer,
       price: Number(form.price) || 0,
       commission: Number(form.commission) || 0,
+      currency, exchangeRate,
       notes: form.notes || ''
     };
     if (editId) {
@@ -74,10 +87,21 @@ export default function Sales() {
     load();
   };
 
+  const visibleRows = useMemo(() =>
+    curFilter === 'all' ? rows : rows.filter((r) => recCurrency(r) === curFilter),
+    [rows, curFilter]
+  );
+
   const totals = useMemo(() => {
-    const price = rows.reduce((s, r) => s + (r.price || 0), 0);
-    const comm = rows.reduce((s, r) => s + (r.commission || 0), 0);
-    return { price, comm, count: rows.length };
+    const mk = () => ({ price: 0, comm: 0, count: 0 });
+    const t = { DOP: mk(), USD: mk() };
+    for (const r of rows) {
+      const c = recCurrency(r);
+      t[c].price += Number(r.price) || 0;
+      t[c].comm += Number(r.commission) || 0;
+      t[c].count += 1;
+    }
+    return { ...t, count: rows.length };
   }, [rows]);
 
   const columns = [
@@ -85,8 +109,11 @@ export default function Sales() {
     { key: 'propertyName', label: 'Propiedad' },
     { key: 'buyer', label: 'Comprador' },
     { key: 'agentName', label: 'Agente' },
-    { key: 'price', label: 'Precio', render: (r) => fmtMoney(r.price), cellClassName: 'font-semibold text-emerald-700' },
-    { key: 'commission', label: 'Comisión', render: (r) => fmtMoney(r.commission) },
+    { key: 'currency', label: 'Moneda', render: (r) => (
+      <span className={recCurrency(r) === 'USD' ? 'badge-warning' : 'badge-slate'}>{recCurrency(r)}</span>
+    )},
+    { key: 'price', label: 'Precio', render: (r) => fmtCur(r.price, recCurrency(r)), cellClassName: 'font-semibold text-emerald-700' },
+    { key: 'commission', label: 'Comisión', render: (r) => fmtCur(r.commission, recCurrency(r)) },
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
         <button onClick={() => onEdit(r)} className="btn-ghost p-1.5"><Edit2 size={14} /></button>
@@ -109,12 +136,14 @@ export default function Sales() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Total ventas</p>
-          <p className="text-xl font-bold text-emerald-700">{fmtMoney(totals.price)}</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold mb-1">Total ventas</p>
+          <p className="text-lg font-bold text-emerald-700">{fmtCur(totals.DOP.price, 'DOP')}</p>
+          {totals.USD.price > 0 && <p className="text-sm font-semibold text-emerald-700 opacity-80">{fmtCur(totals.USD.price, 'USD')}</p>}
         </div>
         <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Comisiones</p>
-          <p className="text-xl font-bold text-amber-700">{fmtMoney(totals.comm)}</p>
+          <p className="text-xs text-ink-500 uppercase font-semibold mb-1">Comisiones</p>
+          <p className="text-lg font-bold text-amber-700">{fmtCur(totals.DOP.comm, 'DOP')}</p>
+          {totals.USD.comm > 0 && <p className="text-sm font-semibold text-amber-700 opacity-80">{fmtCur(totals.USD.comm, 'USD')}</p>}
         </div>
         <div className="card card-body">
           <p className="text-xs text-ink-500 uppercase font-semibold">Cierres</p>
@@ -123,7 +152,15 @@ export default function Sales() {
       </div>
 
       <div className="card card-body">
-        <DataTable columns={columns} rows={rows} />
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm text-ink-500">Moneda:</span>
+          <select className="input py-1.5 w-40" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
+            <option value="all">Todas</option>
+            <option value="DOP">Solo RD$</option>
+            <option value="USD">Solo US$</option>
+          </select>
+        </div>
+        <DataTable columns={columns} rows={visibleRows} />
       </div>
 
       <Modal
@@ -158,12 +195,17 @@ export default function Sales() {
               {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
+          <CurrencyFields
+            currency={form.currency}
+            exchangeRate={form.exchangeRate}
+            onChange={(patch) => setForm({ ...form, ...patch })}
+          />
           <div>
-            <label className="label">Precio (DOP)</label>
+            <label className="label">Precio ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
             <input type="number" step="0.01" className="input" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
           </div>
           <div>
-            <label className="label">Comisión (DOP)</label>
+            <label className="label">Comisión ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
             <input type="number" step="0.01" className="input" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })} />
           </div>
           <div className="md:col-span-2">

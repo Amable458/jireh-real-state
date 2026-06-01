@@ -10,21 +10,27 @@ import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
-import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
+import { useSettings } from '../store/settings.js';
+import { fmtDate, todayISO } from '../utils/format.js';
+import { fmtCur, recCurrency } from '../utils/currency.js';
+import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const empty = () => ({
   description: '', monthly: '', q1: '', q2: '',
-  paymentDate: todayISO(), status: 'pendiente', recurring: 1, notes: ''
+  paymentDate: todayISO(), status: 'pendiente', recurring: 1, notes: '',
+  currency: 'DOP', exchangeRate: ''
 });
 
 export default function Expenses() {
   const { year, month } = usePeriod();
   const { user } = useAuth();
+  const { usdToDop } = useSettings();
   const [rows, setRows] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty());
   const [editId, setEditId] = useState(null);
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [curFilter, setCurFilter] = useState('all');
 
   const ensureRecurring = async () => {
     const exists = await db.expenses.where({ year, month }).count();
@@ -58,19 +64,22 @@ export default function Expenses() {
     });
     setOpen(true);
   };
-  const onEdit = (r) => { setEditId(r.id); setForm({ ...r, monthly: r.monthly ?? '', q1: r.q1 ?? '', q2: r.q2 ?? '' }); setOpen(true); };
+  const onEdit = (r) => { setEditId(r.id); setForm({ ...empty(), ...r, monthly: r.monthly ?? '', q1: r.q1 ?? '', q2: r.q2 ?? '', currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? '' }); setOpen(true); };
 
   const save = async (e) => {
     e.preventDefault();
     const monthly = Number(form.monthly) || 0;
     const q1 = form.q1 === '' ? monthly / 2 : Number(form.q1) || 0;
     const q2 = form.q2 === '' ? monthly / 2 : Number(form.q2) || 0;
+    const currency = form.currency === 'USD' ? 'USD' : 'DOP';
+    const exchangeRate = currency === 'USD' ? (Number(form.exchangeRate) || usdToDop) : null;
     const payload = {
       year, month,
       description: form.description,
       monthly, q1, q2,
       paymentDate: form.paymentDate,
       status: form.status,
+      currency, exchangeRate,
       recurring: form.recurring ? 1 : 0,
       notes: form.notes || ''
     };
@@ -90,19 +99,34 @@ export default function Expenses() {
     load();
   };
 
+  const visibleRows = useMemo(() =>
+    curFilter === 'all' ? rows : rows.filter((r) => recCurrency(r) === curFilter),
+    [rows, curFilter]
+  );
+
   const totals = useMemo(() => {
-    const monthly = rows.reduce((s, r) => s + (r.monthly || 0), 0);
-    const q1 = rows.reduce((s, r) => s + (r.q1 || 0), 0);
-    const q2 = rows.reduce((s, r) => s + (r.q2 || 0), 0);
-    const paid = rows.filter((r) => r.status === 'pagado').reduce((s, r) => s + (r.monthly || 0), 0);
-    return { monthly, q1, q2, paid, pending: monthly - paid };
+    const mk = () => ({ monthly: 0, q1: 0, q2: 0, paid: 0 });
+    const t = { DOP: mk(), USD: mk() };
+    for (const r of rows) {
+      const c = recCurrency(r);
+      t[c].monthly += Number(r.monthly) || 0;
+      t[c].q1 += Number(r.q1) || 0;
+      t[c].q2 += Number(r.q2) || 0;
+      if (r.status === 'pagado') t[c].paid += Number(r.monthly) || 0;
+    }
+    t.DOP.pending = t.DOP.monthly - t.DOP.paid;
+    t.USD.pending = t.USD.monthly - t.USD.paid;
+    return t;
   }, [rows]);
 
   const columns = [
     { key: 'description', label: 'Descripción' },
-    { key: 'monthly', label: 'Mensual', render: (r) => fmtMoney(r.monthly), cellClassName: 'font-medium' },
-    { key: 'q1', label: 'Quincena 1 (15)', render: (r) => fmtMoney(r.q1) },
-    { key: 'q2', label: 'Quincena 2 (30)', render: (r) => fmtMoney(r.q2) },
+    { key: 'currency', label: 'Moneda', render: (r) => (
+      <span className={recCurrency(r) === 'USD' ? 'badge-warning' : 'badge-slate'}>{recCurrency(r)}</span>
+    )},
+    { key: 'monthly', label: 'Mensual', render: (r) => fmtCur(r.monthly, recCurrency(r)), cellClassName: 'font-medium' },
+    { key: 'q1', label: 'Quincena 1 (15)', render: (r) => fmtCur(r.q1, recCurrency(r)) },
+    { key: 'q2', label: 'Quincena 2 (30)', render: (r) => fmtCur(r.q2, recCurrency(r)) },
     { key: 'paymentDate', label: 'Pago', render: (r) => fmtDate(r.paymentDate) },
     { key: 'status', label: 'Estado', render: (r) => (
       <span className={r.status === 'pagado' ? 'badge-success' : 'badge-warning'}>{r.status}</span>
@@ -129,26 +153,30 @@ export default function Expenses() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Total mensual</p>
-          <p className="text-xl font-bold text-ink-800">{fmtMoney(totals.monthly)}</p>
-        </div>
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Quincena 1</p>
-          <p className="text-xl font-bold text-ink-900">{fmtMoney(totals.q1)}</p>
-        </div>
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Quincena 2</p>
-          <p className="text-xl font-bold text-ink-900">{fmtMoney(totals.q2)}</p>
-        </div>
-        <div className="card card-body">
-          <p className="text-xs text-ink-500 uppercase font-semibold">Pendiente</p>
-          <p className="text-xl font-bold text-red-700">{fmtMoney(totals.pending)}</p>
-        </div>
+        {[
+          { key: 'monthly', label: 'Total mensual', color: 'text-ink-900' },
+          { key: 'q1', label: 'Quincena 1', color: 'text-ink-900' },
+          { key: 'q2', label: 'Quincena 2', color: 'text-ink-900' },
+          { key: 'pending', label: 'Pendiente', color: 'text-red-700' }
+        ].map((c) => (
+          <div key={c.key} className="card card-body">
+            <p className="text-xs text-ink-500 uppercase font-semibold mb-1">{c.label}</p>
+            <p className={`text-lg font-bold ${c.color}`}>{fmtCur(totals.DOP[c.key], 'DOP')}</p>
+            {totals.USD[c.key] > 0 && <p className={`text-sm font-semibold ${c.color} opacity-80`}>{fmtCur(totals.USD[c.key], 'USD')}</p>}
+          </div>
+        ))}
       </div>
 
       <div className="card card-body">
-        <DataTable columns={columns} rows={rows} />
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm text-ink-500">Moneda:</span>
+          <select className="input py-1.5 w-40" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
+            <option value="all">Todas</option>
+            <option value="DOP">Solo RD$</option>
+            <option value="USD">Solo US$</option>
+          </select>
+        </div>
+        <DataTable columns={columns} rows={visibleRows} />
       </div>
 
       <Modal
@@ -165,8 +193,13 @@ export default function Expenses() {
             <label className="label">Descripción</label>
             <input className="input" required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
+          <CurrencyFields
+            currency={form.currency}
+            exchangeRate={form.exchangeRate}
+            onChange={(patch) => setForm({ ...form, ...patch })}
+          />
           <div>
-            <label className="label">Monto mensual</label>
+            <label className="label">Monto mensual ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
             <input type="number" step="0.01" className="input" required value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} />
           </div>
           <div>

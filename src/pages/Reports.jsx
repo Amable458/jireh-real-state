@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import PageHeader from '../components/PageHeader.jsx';
 import { db } from '../db/database.js';
 import { fmtMoney, fmtDate, monthsList, monthName, yearsList } from '../utils/format.js';
+import { fmtCur, recCurrency } from '../utils/currency.js';
 import { monthlyTotals, calcBonuses } from '../utils/calc.js';
 import { applyDistribution } from '../utils/distribution.js';
 import HelpButton from '../components/HelpButton.jsx';
@@ -88,23 +89,23 @@ export default function Reports() {
       if (m.totals.rentals.length) {
         autoTable(doc, {
           startY: 20,
-          head: [['Fecha', 'Categoría', 'Propiedad', 'Inquilino', 'Agente', 'Monto', 'Estado']],
-          body: m.totals.rentals.map((r) => [fmtDate(r.date), r.category || 'Renta', r.propertyName || '', r.tenantName || '', r.agentName || '', fmtMoney(r.amount), r.status]),
+          head: [['Fecha', 'Categoría', 'Propiedad', 'Inquilino', 'Agente', 'Moneda', 'Monto', 'Estado']],
+          body: m.totals.rentals.map((r) => [fmtDate(r.date), r.category || 'Renta', r.propertyName || '', r.tenantName || '', r.agentName || '', recCurrency(r), fmtCur(r.amount, recCurrency(r)), r.status]),
           headStyles: { fillColor: [5, 150, 105] },
           didDrawPage: () => doc.text('Ingresos', 14, 18)
         });
       }
       if (m.totals.sales.length) {
         autoTable(doc, {
-          head: [['Fecha', 'Propiedad', 'Comprador', 'Agente', 'Precio', 'Comisión']],
-          body: m.totals.sales.map((r) => [fmtDate(r.date), r.propertyName || '', r.buyer || '', r.agentName || '', fmtMoney(r.price), fmtMoney(r.commission)]),
+          head: [['Fecha', 'Propiedad', 'Comprador', 'Agente', 'Moneda', 'Precio', 'Comisión']],
+          body: m.totals.sales.map((r) => [fmtDate(r.date), r.propertyName || '', r.buyer || '', r.agentName || '', recCurrency(r), fmtCur(r.price, recCurrency(r)), fmtCur(r.commission, recCurrency(r))]),
           headStyles: { fillColor: [37, 99, 235] }
         });
       }
       if (m.totals.expenses.length) {
         autoTable(doc, {
-          head: [['Descripción', 'Mensual', 'Q1', 'Q2', 'Pago', 'Estado']],
-          body: m.totals.expenses.map((r) => [r.description, fmtMoney(r.monthly), fmtMoney(r.q1), fmtMoney(r.q2), fmtDate(r.paymentDate), r.status]),
+          head: [['Descripción', 'Moneda', 'Mensual', 'Q1', 'Q2', 'Pago', 'Estado']],
+          body: m.totals.expenses.map((r) => [r.description, recCurrency(r), fmtCur(r.monthly, recCurrency(r)), fmtCur(r.q1, recCurrency(r)), fmtCur(r.q2, recCurrency(r)), fmtDate(r.paymentDate), r.status]),
           headStyles: { fillColor: [220, 38, 38] }
         });
       }
@@ -130,9 +131,9 @@ export default function Reports() {
 
     const allRentals = []; const allSales = []; const allExpenses = []; const allBonuses = []; const allDist = [];
     data.months.forEach((m) => {
-      m.totals.rentals.forEach((r) => allRentals.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Categoría: r.category || 'Renta', Propiedad: r.propertyName, Inquilino: r.tenantName, Agente: r.agentName, Monto: r.amount, Pagado: r.paid, Estado: r.status, Notas: r.notes || '' }));
-      m.totals.sales.forEach((r) => allSales.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Propiedad: r.propertyName, Comprador: r.buyer, Agente: r.agentName, Precio: r.price, Comisión: r.commission }));
-      m.totals.expenses.forEach((r) => allExpenses.push({ Año: m.year, Mes: monthName(m.month), Descripción: r.description, Mensual: r.monthly, Q1: r.q1, Q2: r.q2, FechaPago: r.paymentDate, Estado: r.status }));
+      m.totals.rentals.forEach((r) => allRentals.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Categoría: r.category || 'Renta', Propiedad: r.propertyName, Inquilino: r.tenantName, Agente: r.agentName, Moneda: recCurrency(r), Tasa: r.exchangeRate || '', Monto: r.amount, Pagado: r.paid, Estado: r.status, Notas: r.notes || '' }));
+      m.totals.sales.forEach((r) => allSales.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Propiedad: r.propertyName, Comprador: r.buyer, Agente: r.agentName, Moneda: recCurrency(r), Tasa: r.exchangeRate || '', Precio: r.price, Comisión: r.commission }));
+      m.totals.expenses.forEach((r) => allExpenses.push({ Año: m.year, Mes: monthName(m.month), Descripción: r.description, Moneda: recCurrency(r), Tasa: r.exchangeRate || '', Mensual: r.monthly, Q1: r.q1, Q2: r.q2, FechaPago: r.paymentDate, Estado: r.status }));
       m.bonuses.byAgent.forEach((b) => allBonuses.push({ Año: m.year, Mes: monthName(m.month), Agente: b.agentName, Cierres: b.count, MontoGenerado: b.amount, Bonificación: b.bonus }));
       if (m.totals.surplus > 0) {
         const row = { Año: m.year, Mes: monthName(m.month), Excedente: m.totals.surplus };
@@ -219,14 +220,17 @@ export default function Reports() {
 
       {data && (
         <>
+          <div className="mb-3 text-xs text-ink-500 bg-ink-50 border border-ink-200 rounded-lg px-3 py-2 inline-block">
+            Los totales consolidados están <b>convertidos a RD$</b> usando la tasa registrada en cada transacción.
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Ingresos</p><p className="text-xl font-bold text-emerald-700">{fmtMoney(data.totalIncome)}</p></div>
-            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Gastos</p><p className="text-xl font-bold text-red-700">{fmtMoney(data.totalExpenses)}</p></div>
-            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Excedente</p><p className={`text-xl font-bold ${data.totalSurplus >= 0 ? 'text-ink-900' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Ingresos (RD$)</p><p className="text-xl font-bold text-emerald-700">{fmtMoney(data.totalIncome)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Gastos (RD$)</p><p className="text-xl font-bold text-red-700">{fmtMoney(data.totalExpenses)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Excedente (RD$)</p><p className={`text-xl font-bold ${data.totalSurplus >= 0 ? 'text-ink-900' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</p></div>
           </div>
 
           <div className="card card-body">
-            <h3 className="font-semibold text-ink-700 mb-3">Detalle por mes — {periodLabel()}</h3>
+            <h3 className="font-semibold text-ink-700 mb-3">Detalle por mes — {periodLabel()} <span className="text-xs font-normal text-ink-400">(convertido a RD$)</span></h3>
             <div className="table-wrap">
               <table className="table">
                 <thead><tr><th>Mes</th><th className="text-right">Ingresos</th><th className="text-right">Gastos</th><th className="text-right">Excedente</th><th className="text-right">Comisiones</th><th className="text-right">Pool bonos</th></tr></thead>

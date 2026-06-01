@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, FileText } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, FileText, Pencil } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
+import Modal from '../components/Modal.jsx';
 import { usePeriod } from '../store/period.js';
-import { fmtMoney, monthName } from '../utils/format.js';
+import { useAuth } from '../store/auth.js';
+import { useSettings } from '../store/settings.js';
+import { monthName } from '../utils/format.js';
+import { fmtCur, recCurrency } from '../utils/currency.js';
 import { monthlyTotals, yearMonthlySeries } from '../utils/calc.js';
 import { db } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
@@ -26,12 +30,27 @@ function StatCard({ icon: Icon, label, value, color, sub }) {
   );
 }
 
+const VIEWS = [
+  { value: 'DOP', label: 'RD$' },
+  { value: 'USD', label: 'US$' },
+  { value: 'BOTH', label: 'Ambas' },
+  { value: 'CONVERTED', label: 'Convertido a RD$' }
+];
+
 export default function Dashboard() {
   const { year, month } = usePeriod();
+  const { user, hasRole } = useAuth();
+  const { usdToDop, setRate } = useSettings();
   const [totals, setTotals] = useState(null);
   const [series, setSeries] = useState([]);
   const [contractAlerts, setContractAlerts] = useState([]);
   const [pendingRentals, setPendingRentals] = useState([]);
+  const [view, setView] = useState('BOTH');
+  const [rateModal, setRateModal] = useState(false);
+  const [rateInput, setRateInput] = useState('');
+  const [rateErr, setRateErr] = useState('');
+
+  const canEditRate = hasRole('SuperAdmin', 'Admin');
 
   const load = async () => {
     setTotals(await monthlyTotals(year, month));
@@ -49,11 +68,72 @@ export default function Dashboard() {
   };
 
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
-  useRealtimeTable(['rentals', 'sales', 'expenses', 'tenants'], () => load());
+  useRealtimeTable(['rentals', 'sales', 'expenses', 'tenants', 'settings'], () => load());
 
   if (!totals) return <div className="text-ink-400">Cargando...</div>;
-  const negative = totals.surplus < 0;
-  const chartData = series.map((s) => ({ name: monthName(s.month).slice(0, 3), Ingresos: s.income, Gastos: s.expenses, Excedente: s.surplus }));
+
+  const saveRate = async () => {
+    setRateErr('');
+    try {
+      await setRate(rateInput, user);
+      setRateModal(false);
+      load();
+    } catch (e) {
+      setRateErr(e.message);
+    }
+  };
+
+  // Selección de datos según vista
+  const dop = totals.cur.DOP;
+  const usd = totals.cur.USD;
+  const base = totals; // consolidado en DOP (campos planos)
+
+  const negativeDOP = dop.surplus < 0;
+  const negativeUSD = usd.surplus < 0;
+  const negativeBase = base.surplus < 0;
+  const showDeficit = view === 'CONVERTED' ? negativeBase : view === 'USD' ? negativeUSD : negativeDOP;
+
+  // Tarjetas según la vista
+  const renderCards = () => {
+    if (view === 'BOTH') {
+      return (
+        <>
+          <StatCard icon={TrendingUp} label="Ingresos RD$" value={fmtCur(dop.totalIncome, 'DOP')} color="bg-emerald-500" />
+          <StatCard icon={TrendingUp} label="Ingresos US$" value={fmtCur(usd.totalIncome, 'USD')} color="bg-emerald-600" />
+          <StatCard icon={TrendingDown} label="Gastos RD$" value={fmtCur(dop.expensesAll, 'DOP')} color="bg-red-500" />
+          <StatCard icon={TrendingDown} label="Gastos US$" value={fmtCur(usd.expensesAll, 'USD')} color="bg-red-600" />
+          <StatCard icon={Wallet} label="Balance RD$" value={fmtCur(dop.surplus, 'DOP')} color={negativeDOP ? 'bg-red-500' : 'bg-ink-900'} />
+          <StatCard icon={Wallet} label="Balance US$" value={fmtCur(usd.surplus, 'USD')} color={negativeUSD ? 'bg-red-500' : 'bg-ink-800'} />
+          <StatCard icon={FileText} label="Comisiones RD$" value={fmtCur(dop.commissions, 'DOP')} color="bg-amber-500" />
+          <StatCard icon={FileText} label="Comisiones US$" value={fmtCur(usd.commissions, 'USD')} color="bg-amber-600" />
+        </>
+      );
+    }
+    const d = view === 'USD' ? usd : view === 'CONVERTED' ? base : dop;
+    const ccy = view === 'USD' ? 'USD' : 'DOP';
+    const neg = d.surplus < 0;
+    const suffix = view === 'CONVERTED' ? ' (convertido a RD$)' : '';
+    return (
+      <>
+        <StatCard icon={TrendingUp} label={`Ingresos totales${suffix}`} value={fmtCur(d.totalIncome, ccy)} color="bg-emerald-500" sub={`Rentas: ${fmtCur((d.rentalsPaid || 0) + (d.rentalsPartial || 0), ccy)}`} />
+        <StatCard icon={TrendingDown} label={`Gastos totales${suffix}`} value={fmtCur(d.expensesAll, ccy)} color="bg-red-500" sub={`Pagados: ${fmtCur(d.expensesPaid || 0, ccy)}`} />
+        <StatCard icon={Wallet} label={`Balance neto${suffix}`} value={fmtCur(d.surplus, ccy)} color={neg ? 'bg-red-500' : 'bg-ink-900'} sub={neg ? 'Déficit del mes' : 'Excedente disponible'} />
+        <StatCard icon={FileText} label={`Comisiones${suffix}`} value={fmtCur(d.commissions, ccy)} color="bg-amber-500" sub={`${totals.sales.length} venta(s)`} />
+      </>
+    );
+  };
+
+  // Datos de la gráfica según vista
+  const chartData = series.map((s) => {
+    const name = monthName(s.month).slice(0, 3);
+    if (view === 'BOTH') {
+      return { name, 'Ingresos RD$': s.dop.income, 'Gastos RD$': s.dop.expenses, 'Ingresos US$': s.usd.income, 'Gastos US$': s.usd.expenses };
+    }
+    const d = view === 'USD' ? s.usd : view === 'CONVERTED' ? s.base : s.dop;
+    return { name, Ingresos: d.income, Gastos: d.expenses, Excedente: d.surplus };
+  });
+
+  const chartCcy = view === 'USD' ? 'USD' : 'DOP';
 
   return (
     <div>
@@ -63,7 +143,30 @@ export default function Dashboard() {
         actions={<><HelpButton content={HELP.dashboard} /><PeriodPicker /></>}
       />
 
-      {negative && (
+      {/* Barra de control de moneda */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="inline-flex rounded-lg border border-ink-200 bg-white p-1">
+          {VIEWS.map((v) => (
+            <button
+              key={v.value}
+              onClick={() => setView(v.value)}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${view === v.value ? 'bg-brand-500 text-ink-900 font-semibold' : 'text-ink-600 hover:bg-ink-50'}`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-sm text-ink-600">
+          <span>Tasa USD → DOP: <b className="text-ink-900">{usdToDop}</b></span>
+          {canEditRate && (
+            <button onClick={() => { setRateInput(String(usdToDop)); setRateErr(''); setRateModal(true); }} className="btn-ghost p-1.5" title="Editar tasa">
+              <Pencil size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showDeficit && (
         <div className="mb-5 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex items-start gap-3">
           <AlertTriangle className="text-red-600 mt-0.5" size={20} />
           <div>
@@ -73,27 +176,42 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-        <StatCard icon={TrendingUp} label="Ingresos totales" value={fmtMoney(totals.totalIncome)} color="bg-emerald-500" sub={`Rentas: ${fmtMoney(totals.rentalsPaid + totals.rentalsPartial)}`} />
-        <StatCard icon={TrendingDown} label="Gastos totales" value={fmtMoney(totals.expensesAll)} color="bg-red-500" sub={`Pagados: ${fmtMoney(totals.expensesPaid)}`} />
-        <StatCard icon={Wallet} label="Balance neto" value={fmtMoney(totals.surplus)} color={negative ? 'bg-red-500' : 'bg-ink-900'} sub={negative ? 'Déficit del mes' : 'Excedente disponible'} />
-        <StatCard icon={FileText} label="Comisiones" value={fmtMoney(totals.commissions)} color="bg-amber-500" sub={`${totals.sales.length} venta(s)`} />
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${view === 'BOTH' ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4 mb-5`}>
+        {renderCards()}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
         <div className="card card-body lg:col-span-2">
-          <h3 className="font-semibold text-ink-700 mb-3">Comparativa mensual del año {year}</h3>
+          <h3 className="font-semibold text-ink-700 mb-3">
+            Comparativa mensual del año {year}
+            {view === 'CONVERTED' && <span className="text-xs font-normal text-ink-400 ml-2">(convertido a RD$)</span>}
+            {view === 'BOTH' && <span className="text-xs font-normal text-ink-400 ml-2">(RD$ y US$ por separado)</span>}
+          </h3>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v) => fmtMoney(v)} />
+                <Tooltip formatter={(v, n) => {
+                  const c = String(n).includes('US$') ? 'USD' : chartCcy;
+                  return fmtCur(v, c);
+                }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Ingresos" fill="#059669" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Gastos" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Excedente" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                {view === 'BOTH' ? (
+                  <>
+                    <Bar dataKey="Ingresos RD$" fill="#059669" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Gastos RD$" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Ingresos US$" fill="#34d399" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Gastos US$" fill="#f87171" radius={[4, 4, 0, 0]} />
+                  </>
+                ) : (
+                  <>
+                    <Bar dataKey="Ingresos" fill="#059669" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Gastos" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Excedente" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  </>
+                )}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -132,7 +250,7 @@ export default function Dashboard() {
                     {pendingRentals.map((r) => (
                       <li key={r.id} className="flex justify-between gap-2 bg-red-50 border border-red-200 rounded px-2 py-1.5">
                         <span className="truncate">{r.tenantName || `Inquilino #${r.tenantId}`}</span>
-                        <span className="text-xs text-red-700 font-medium">{fmtMoney(r.amount)}</span>
+                        <span className="text-xs text-red-700 font-medium">{fmtCur(r.amount, recCurrency(r))}</span>
                       </li>
                     ))}
                   </ul>
@@ -141,6 +259,26 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Editor de tasa */}
+      <Modal
+        open={rateModal} onClose={() => setRateModal(false)}
+        title="Tasa de cambio USD → DOP" size="sm"
+        footer={<>
+          <button className="btn-secondary" onClick={() => setRateModal(false)}>Cancelar</button>
+          <button className="btn-primary" onClick={saveRate}>Guardar</button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-ink-600">Define cuántos pesos dominicanos (RD$) equivale 1 dólar (US$). Se usará como tasa por defecto al registrar montos en US$.</p>
+          <div>
+            <label className="label">1 US$ = ? RD$</label>
+            <input type="number" step="0.01" min="0" className="input" value={rateInput} onChange={(e) => setRateInput(e.target.value)} autoFocus />
+          </div>
+          <p className="text-xs text-ink-400">Cada transacción guarda la tasa usada en su momento, así que cambiar esta tasa global no altera los registros históricos.</p>
+          {rateErr && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{rateErr}</div>}
+        </div>
+      </Modal>
     </div>
   );
 }

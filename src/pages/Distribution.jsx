@@ -177,6 +177,7 @@ export default function Distribution() {
           <h3 className="font-semibold text-ink-700 mb-3 flex items-center gap-2">
             <PieIcon size={18} /> Aplicación a {monthName(month)} {year}
           </h3>
+          <p className="text-xs text-ink-400 mb-2">Montos consolidados y <b>convertidos a RD$</b> (combinan RD$ y US$ según la tasa de cada transacción).</p>
           <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
             <div className="bg-emerald-50 rounded-lg p-3">
               <div className="text-xs text-emerald-700">Ingresos</div>
