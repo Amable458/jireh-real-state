@@ -58,8 +58,12 @@ export default function Sales() {
     const agent = agents.find((a) => a.id === Number(form.agentId));
     const currency = form.currency === 'USD' ? 'USD' : 'DOP';
     const exchangeRate = currency === 'USD' ? (Number(form.exchangeRate) || usdToDop) : null;
+    // El periodo se determina por la fecha de cierre, no por el selector
+    const d = new Date(`${form.date}T00:00:00`);
+    const pYear = Number.isNaN(d.getTime()) ? year : d.getFullYear();
+    const pMonth = Number.isNaN(d.getTime()) ? month : d.getMonth() + 1;
     const payload = {
-      year, month,
+      year: pYear, month: pMonth,
       date: form.date,
       propertyId: form.propertyId ? Number(form.propertyId) : null,
       agentId: form.agentId ? Number(form.agentId) : null,

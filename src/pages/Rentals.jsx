@@ -134,6 +134,11 @@ export default function Rentals() {
     const isRenta = form.kind === 'renta';
     const property = props.find((p) => p.id === Number(form.propertyId));
 
+    // El periodo (año/mes) se determina por la FECHA del ingreso, no por el selector
+    const d = new Date(`${form.date}T00:00:00`);
+    const pYear = Number.isNaN(d.getTime()) ? year : d.getFullYear();
+    const pMonth = Number.isNaN(d.getTime()) ? month : d.getMonth() + 1;
+
     let category = 'Renta';
     if (!isRenta) {
       category = form.category === '__otros__'
@@ -152,7 +157,7 @@ export default function Rentals() {
       const tenant = tenants.find((t) => t.id === Number(form.tenantId));
       const agent = agents.find((a) => a.id === Number(form.agentId));
       payload = {
-        year, month, kind: 'renta', category: 'Renta',
+        year: pYear, month: pMonth, kind: 'renta', category: 'Renta',
         date: form.date,
         propertyId: form.propertyId ? Number(form.propertyId) : null,
         tenantId: form.tenantId ? Number(form.tenantId) : null,
@@ -169,7 +174,7 @@ export default function Rentals() {
       };
     } else {
       payload = {
-        year, month, kind: 'otro', category,
+        year: pYear, month: pMonth, kind: 'otro', category,
         date: form.date,
         propertyId: form.propertyId ? Number(form.propertyId) : null,
         tenantId: null, agentId: null,
