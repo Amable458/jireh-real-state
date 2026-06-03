@@ -53,6 +53,8 @@ export default function Rentals() {
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [noteView, setNoteView] = useState({ open: false, text: '' });
   const [curFilter, setCurFilter] = useState('all'); // all | DOP | USD
+  const [saveErr, setSaveErr] = useState('');
+  const [saving, setSaving] = useState(false);
   const { usdToDop } = useSettings();
 
   // Copia los ingresos recurrentes del mes anterior que aún no existan en este mes,
@@ -101,6 +103,7 @@ export default function Rentals() {
 
   const pickKind = (kind) => {
     setEditId(null);
+    setSaveErr('');
     setForm(kind === 'renta' ? emptyRenta() : emptyOtro());
     setChooser(false);
     setOpen(true);
@@ -108,6 +111,7 @@ export default function Rentals() {
 
   const onEdit = (r) => {
     setEditId(r.id);
+    setSaveErr('');
     const kind = r.kind || 'renta';
     if (kind === 'renta') {
       setForm({ ...emptyRenta(), ...r, amount: r.amount ?? '', paid: r.paid ?? '' });
@@ -180,14 +184,27 @@ export default function Rentals() {
       };
     }
 
-    if (editId) {
-      await db.rentals.update(editId, payload);
-      await logActivity(user.sub, user.username, 'income.update', `id=${editId} kind=${payload.kind}`);
-    } else {
-      const id = await db.rentals.add({ ...payload, createdAt: new Date().toISOString() });
-      await logActivity(user.sub, user.username, 'income.create', `id=${id} kind=${payload.kind}`);
+    setSaveErr(''); setSaving(true);
+    try {
+      if (editId) {
+        await db.rentals.update(editId, payload);
+        await logActivity(user.sub, user.username, 'income.update', `id=${editId} kind=${payload.kind}`);
+      } else {
+        const id = await db.rentals.add({ ...payload, createdAt: new Date().toISOString() });
+        await logActivity(user.sub, user.username, 'income.create', `id=${id} kind=${payload.kind}`);
+      }
+      setOpen(false);
+      await load();
+    } catch (ex) {
+      const msg = ex?.message || 'Error al guardar';
+      // Pista útil si faltan las migraciones de columnas
+      const hint = /column .* does not exist|kind|category|currency|exchangeRate|recurring/i.test(msg)
+        ? ' — Verifique que ejecutó las migraciones SQL en Supabase (migration_ingresos.sql y migration_currency.sql).'
+        : '';
+      setSaveErr(msg + hint);
+    } finally {
+      setSaving(false);
     }
-    setOpen(false); load();
   };
 
   const remove = async (id) => {
@@ -336,11 +353,16 @@ export default function Rentals() {
           : (isRenta ? 'Nueva renta' : 'Nuevo ingreso')}
         size="lg"
         footer={<>
-          <button className="btn-secondary" onClick={() => setOpen(false)}>Cancelar</button>
-          <button className="btn-primary" onClick={save}>Guardar</button>
+          <button className="btn-secondary" onClick={() => setOpen(false)} disabled={saving}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
         </>}
       >
         <form onSubmit={save} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {saveErr && (
+            <div className="md:col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {saveErr}
+            </div>
+          )}
           {/* Indicador de tipo */}
           <div className="md:col-span-2">
             <span className={`badge ${isRenta ? 'badge-info' : 'badge-slate'}`}>
