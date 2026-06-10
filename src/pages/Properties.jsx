@@ -8,14 +8,22 @@ import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
+import { useSettings } from '../store/settings.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
+import { fmtCur, recCurrency } from '../utils/currency.js';
+import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', rent: '', sale: '', status: 'disponible', notes: '' });
-const tenantEmpty = () => ({ name: '', phone: '', email: '', identification: '', propertyId: '', contractStart: todayISO(), contractEnd: '', monthlyRent: '', notes: '' });
+const tenantEmpty = () => ({
+  name: '', phone: '', email: '', identification: '', propertyId: '',
+  contractStart: todayISO(), contractEnd: '', monthlyRent: '', notes: '',
+  currency: 'DOP', exchangeRate: '', commissionPercent: '', collectionDay: 1
+});
 const agentEmpty = () => ({ name: '', phone: '', email: '', commission: '', notes: '', active: 1 });
 
 export default function Properties() {
   const { user } = useAuth();
+  const { usdToDop } = useSettings();
   const [tab, setTab] = useState('properties');
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -63,13 +71,18 @@ export default function Properties() {
   const saveTenant = async (e) => {
     e.preventDefault();
     const property = properties.find((p) => p.id === Number(tForm.propertyId));
+    const currency = tForm.currency === 'USD' ? 'USD' : 'DOP';
+    const exchangeRate = currency === 'USD' ? (Number(tForm.exchangeRate) || usdToDop) : null;
     const payload = {
       name: tForm.name, phone: tForm.phone, email: tForm.email,
       identification: tForm.identification,
       propertyId: tForm.propertyId ? Number(tForm.propertyId) : null,
       propertyName: property?.name || '',
-      contractStart: tForm.contractStart, contractEnd: tForm.contractEnd,
+      contractStart: tForm.contractStart, contractEnd: tForm.contractEnd || null,
       monthlyRent: Number(tForm.monthlyRent) || 0,
+      currency, exchangeRate,
+      commissionPercent: tForm.commissionPercent === '' ? null : Math.min(100, Math.max(0, Number(tForm.commissionPercent) || 0)),
+      collectionDay: Math.min(31, Math.max(1, Number(tForm.collectionDay) || 1)),
       notes: tForm.notes
     };
     if (tEdit) {
@@ -146,7 +159,13 @@ export default function Properties() {
     { key: 'name', label: 'Inquilino' },
     { key: 'propertyName', label: 'Propiedad' },
     { key: 'phone', label: 'Teléfono' },
-    { key: 'monthlyRent', label: 'Renta mensual', render: (r) => fmtMoney(r.monthlyRent) },
+    { key: 'monthlyRent', label: 'Renta mensual', render: (r) => fmtCur(r.monthlyRent, recCurrency(r)) },
+    { key: 'commissionPercent', label: '% Comisión', render: (r) =>
+      r.commissionPercent != null && r.commissionPercent !== ''
+        ? <span className="badge-info">{Number(r.commissionPercent)}% = {fmtCur((Number(r.monthlyRent) || 0) * Number(r.commissionPercent) / 100, recCurrency(r))}</span>
+        : <span className="badge-slate" title="Sin % configurado: no genera ingreso automático">—</span>
+    },
+    { key: 'collectionDay', label: 'Día cobro', render: (r) => r.collectionDay ? `Día ${r.collectionDay}` : '—' },
     { key: 'contractStart', label: 'Inicio', render: (r) => fmtDate(r.contractStart) },
     { key: 'contractEnd', label: 'Vence', render: (r) => {
       if (!r.contractEnd) return '—';
@@ -156,7 +175,19 @@ export default function Properties() {
     }},
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
-        <button className="btn-ghost p-1.5" onClick={() => { setTEdit(r.id); setTForm({ ...r, monthlyRent: r.monthlyRent ?? '' }); setTOpen(true); }}><Edit2 size={14} /></button>
+        <button className="btn-ghost p-1.5" onClick={() => {
+          setTEdit(r.id);
+          setTForm({
+            ...tenantEmpty(), ...r,
+            monthlyRent: r.monthlyRent ?? '',
+            currency: r.currency || 'DOP',
+            exchangeRate: r.exchangeRate ?? '',
+            commissionPercent: r.commissionPercent ?? '',
+            collectionDay: r.collectionDay ?? 1,
+            contractEnd: r.contractEnd || ''
+          });
+          setTOpen(true);
+        }}><Edit2 size={14} /></button>
         <button className="btn-ghost p-1.5 text-red-600" onClick={() => setConfirm({ open: true, kind: 'tenant', id: r.id })}><Trash2 size={14} /></button>
       </div>
     )}
@@ -277,7 +308,27 @@ export default function Properties() {
           </div>
           <div><label className="label">Inicio contrato</label><input type="date" className="input" value={tForm.contractStart} onChange={(e) => setTForm({ ...tForm, contractStart: e.target.value })} /></div>
           <div><label className="label">Fin contrato</label><input type="date" className="input" value={tForm.contractEnd} onChange={(e) => setTForm({ ...tForm, contractEnd: e.target.value })} /></div>
-          <div><label className="label">Renta mensual (DOP)</label><input type="number" step="0.01" className="input" value={tForm.monthlyRent} onChange={(e) => setTForm({ ...tForm, monthlyRent: e.target.value })} /></div>
+          <CurrencyFields
+            currency={tForm.currency}
+            exchangeRate={tForm.exchangeRate}
+            onChange={(patch) => setTForm({ ...tForm, ...patch })}
+          />
+          <div><label className="label">Renta mensual ({tForm.currency === 'USD' ? 'US$' : 'RD$'})</label><input type="number" step="0.01" className="input" value={tForm.monthlyRent} onChange={(e) => setTForm({ ...tForm, monthlyRent: e.target.value })} /></div>
+          <div>
+            <label className="label">% Comisión (lo que nos toca)</label>
+            <input type="number" step="0.5" min="0" max="100" className="input" placeholder="ej. 10" value={tForm.commissionPercent} onChange={(e) => setTForm({ ...tForm, commissionPercent: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Día de cobro mensual</label>
+            <input type="number" min="1" max="31" className="input" value={tForm.collectionDay} onChange={(e) => setTForm({ ...tForm, collectionDay: e.target.value })} />
+          </div>
+          {tForm.monthlyRent && tForm.commissionPercent !== '' && Number(tForm.commissionPercent) > 0 && (
+            <div className="md:col-span-2 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 text-sm text-ink-700">
+              Cada mes se generará en <b>Ingresos</b> un cobro pendiente de{' '}
+              <b>{fmtCur((Number(tForm.monthlyRent) || 0) * (Number(tForm.commissionPercent) || 0) / 100, tForm.currency === 'USD' ? 'USD' : 'DOP')}</b>
+              {' '}({tForm.commissionPercent}% de la renta) el día {tForm.collectionDay || 1}.
+            </div>
+          )}
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={tForm.notes} onChange={(e) => setTForm({ ...tForm, notes: e.target.value })} /></div>
         </form>
       </Modal>

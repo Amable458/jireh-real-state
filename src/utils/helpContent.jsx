@@ -177,6 +177,12 @@ const HELP = {
           <li><b>Agentes:</b> personal que cierra rentas y ventas. Solo los <b>activos</b> aparecen en formularios.</li>
         </ul>
       </Section>
+      <Section title="Renta fija con % de comisión (cobro automático)">
+        <p>Cada inquilino define una <b>renta mensual fija</b> (en RD$ o US$), un <b>% de comisión</b> (lo que la empresa gana) y un <b>día de cobro</b>.</p>
+        <Formula>Ingreso mensual generado = Renta mensual × (% comisión / 100)</Formula>
+        <p>Cada mes, al abrir Ingresos, se genera automáticamente ese cobro como <b>pendiente</b> en la fecha de cobro. Se marca como pagado manualmente cuando se cobra. Si el % de comisión está vacío, no se genera nada.</p>
+        <p>Solo se genera dentro de la ventana del contrato (entre inicio y fin de contrato).</p>
+      </Section>
       <Section title="Alertas de vencimiento">
         <p>Los inquilinos cuyo <b>Fin de contrato</b> cae dentro de los próximos 30 días se marcan en amarillo y aparecen en el Dashboard.</p>
       </Section>

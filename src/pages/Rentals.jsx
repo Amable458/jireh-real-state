@@ -83,11 +83,58 @@ export default function Rentals() {
       recurring: 1, recurringKey: r.recurringKey,
       createdAt: new Date().toISOString()
     }));
-    await db.rentals.bulkAdd(clones);
+    try { await db.rentals.bulkAdd(clones); }
+    catch (e) { console.warn('[Jireh] Copia de ingresos recurrentes (posible duplicado concurrente):', e.message); }
+  };
+
+  // Genera, a partir del catálogo de Inquilinos, el cobro mensual de comisión
+  // (monthlyRent × commissionPercent) como ingreso "pendiente" en la fecha de cobro.
+  // Idempotente: usa recurringKey = tenant_<id> para no duplicar dentro del mes.
+  const ensureTenantIncomes = async () => {
+    const [current, allTenants] = await Promise.all([
+      db.rentals.where({ year, month }).toArray(),
+      db.tenants.toArray()
+    ]);
+    const existingKeys = new Set(current.filter((r) => r.recurringKey).map((r) => r.recurringKey));
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    const lastDay = monthEnd.getDate();
+
+    const toCreate = [];
+    for (const t of allTenants) {
+      const rent = Number(t.monthlyRent) || 0;
+      const pct = Number(t.commissionPercent) || 0;
+      if (rent <= 0 || pct <= 0) continue;                 // sin % configurado → no genera
+      if (existingKeys.has(`tenant_${t.id}`)) continue;    // ya generado este mes
+      // Solo dentro de la ventana del contrato
+      if (t.contractStart && new Date(`${t.contractStart}T00:00:00`) > monthEnd) continue;
+      if (t.contractEnd && new Date(`${t.contractEnd}T00:00:00`) < monthStart) continue;
+
+      const day = Math.min(Math.max(Number(t.collectionDay) || 1, 1), lastDay);
+      const amount = Math.round(rent * pct) / 100; // rent × pct / 100 con 2 decimales
+      toCreate.push({
+        year, month, kind: 'renta', category: 'Renta',
+        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        propertyId: t.propertyId ?? null, propertyName: t.propertyName || '',
+        tenantId: t.id, tenantName: t.name || '',
+        agentId: null, agentName: '',
+        amount, paid: 0, status: 'pendiente',
+        currency: t.currency || 'DOP',
+        exchangeRate: (t.currency === 'USD' ? (t.exchangeRate ?? null) : null),
+        notes: `Comisión ${pct}% de renta ${t.currency === 'USD' ? 'US$' : 'RD$'}${rent.toLocaleString('es-DO')} — ${t.name}`,
+        recurring: 0, recurringKey: `tenant_${t.id}`,
+        createdAt: new Date().toISOString()
+      });
+    }
+    if (toCreate.length) {
+      try { await db.rentals.bulkAdd(toCreate); }
+      catch (e) { console.warn('[Jireh] Generación de cobros de inquilinos (posible duplicado concurrente):', e.message); }
+    }
   };
 
   const load = async () => {
     await ensureRecurring();
+    await ensureTenantIncomes();
     const [r, p, t, a] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
       db.properties.toArray(),
