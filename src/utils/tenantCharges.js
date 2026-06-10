@@ -160,8 +160,55 @@ export async function onRentalStatusChange(rental, prevStatus) {
   else if (!nowPaid && wasPaid) await removeOwnerPayment(rental);
 }
 
-// Wrapper para las páginas: genera rentas pendientes y limpia pagos huérfanos.
+// Elimina rentas auto-generadas (y sus pagos a propietario) de inquilinos
+// que YA NO existen. Solo borra las PENDIENTES — las pagadas son historial real.
+export async function cleanupOrphanRentals(year, month) {
+  try {
+    const [rentals, tenants] = await Promise.all([
+      db.rentals.where({ year, month }).toArray(),
+      db.tenants.toArray()
+    ]);
+    const tenantIds = new Set(tenants.map((t) => t.id));
+    for (const r of rentals) {
+      const key = r.recurringKey || '';
+      if (!key.startsWith('tenant_') || key.startsWith('tenant_owner_')) continue;
+      const tid = Number(key.replace('tenant_', ''));
+      if (tenantIds.has(tid)) continue;       // el inquilino aún existe
+      if (r.status === 'pagado') continue;    // renta pagada = historial, se conserva
+      try {
+        await db.rentals.delete(r.id);
+        await removeOwnerPayment({ ...r, tenantId: tid });
+      } catch (err) { console.warn('[Jireh] Limpieza renta huérfana:', err.message); }
+    }
+  } catch (e) {
+    console.warn('[Jireh] cleanupOrphanRentals:', e.message);
+  }
+}
+
+// Borra en cascada las rentas pendientes y pagos a propietario de un inquilino
+// que se está eliminando. Las rentas pagadas se conservan como historial.
+export async function deleteTenantCharges(tenantId) {
+  try {
+    const key = RENT_KEY(tenantId);
+    const ownerKey = OWNER_KEY(tenantId);
+    const [rentals, expenses] = await Promise.all([
+      db.rentals.where('recurringKey').equals(key).toArray(),
+      db.expenses.where('recurringKey').equals(ownerKey).toArray()
+    ]);
+    for (const r of rentals) {
+      if (r.status !== 'pagado') { try { await db.rentals.delete(r.id); } catch { /* ignore */ } }
+    }
+    for (const e of expenses) {
+      try { await db.expenses.delete(e.id); } catch { /* ignore */ }
+    }
+  } catch (e) {
+    console.warn('[Jireh] deleteTenantCharges:', e.message);
+  }
+}
+
+// Wrapper para las páginas: limpia huérfanas, genera pendientes, limpia pagos.
 export async function ensureTenantCharges(year, month) {
+  await cleanupOrphanRentals(year, month);
   await ensureTenantIncomes(year, month);
   await cleanupOwnerPayments(year, month);
 }

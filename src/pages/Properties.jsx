@@ -11,6 +11,7 @@ import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
+import { deleteTenantCharges } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', rent: '', sale: '', status: 'disponible', notes: '' });
@@ -143,6 +144,8 @@ export default function Properties() {
       await logActivity(user.sub, user.username, 'property.delete', `id=${confirm.id}`);
     }
     if (confirm.kind === 'tenant') {
+      // Borra en cascada las rentas pendientes y pagos a propietario generados
+      await deleteTenantCharges(confirm.id);
       await db.tenants.delete(confirm.id);
       await logActivity(user.sub, user.username, 'tenant.delete', `id=${confirm.id}`);
     }
