@@ -42,6 +42,8 @@ export default function Properties() {
   const [aEdit, setAEdit] = useState(null);
 
   const [confirm, setConfirm] = useState({ open: false, kind: '', id: null });
+  const [tErr, setTErr] = useState('');
+  const [tSaving, setTSaving] = useState(false);
 
   const load = async () => {
     setProperties(await db.properties.toArray());
@@ -78,21 +80,34 @@ export default function Properties() {
       identification: tForm.identification,
       propertyId: tForm.propertyId ? Number(tForm.propertyId) : null,
       propertyName: property?.name || '',
-      contractStart: tForm.contractStart, contractEnd: tForm.contractEnd || null,
+      contractStart: tForm.contractStart || null,
+      contractEnd: tForm.contractEnd || null,
       monthlyRent: Number(tForm.monthlyRent) || 0,
       currency, exchangeRate,
-      commissionPercent: tForm.commissionPercent === '' ? null : Math.min(100, Math.max(0, Number(tForm.commissionPercent) || 0)),
+      commissionPercent: tForm.commissionPercent === '' || tForm.commissionPercent == null ? null : Math.min(100, Math.max(0, Number(tForm.commissionPercent) || 0)),
       collectionDay: Math.min(31, Math.max(1, Number(tForm.collectionDay) || 1)),
       notes: tForm.notes
     };
-    if (tEdit) {
-      await db.tenants.update(tEdit, payload);
-      await logActivity(user.sub, user.username, 'tenant.update', `id=${tEdit}`);
-    } else {
-      const id = await db.tenants.add({ ...payload, createdAt: new Date().toISOString() });
-      await logActivity(user.sub, user.username, 'tenant.create', `id=${id}`);
+    setTErr(''); setTSaving(true);
+    try {
+      if (tEdit) {
+        await db.tenants.update(tEdit, payload);
+        await logActivity(user.sub, user.username, 'tenant.update', `id=${tEdit}`);
+      } else {
+        const id = await db.tenants.add({ ...payload, createdAt: new Date().toISOString() });
+        await logActivity(user.sub, user.username, 'tenant.create', `id=${id}`);
+      }
+      setTOpen(false);
+      await load();
+    } catch (ex) {
+      const msg = ex?.message || 'Error al guardar';
+      const hint = /column|currency|commissionPercent|collectionDay|exchangeRate|schema cache/i.test(msg)
+        ? ' — Ejecute la migración supabase/migration_tenants.sql en el SQL Editor de Supabase.'
+        : '';
+      setTErr(msg + hint);
+    } finally {
+      setTSaving(false);
     }
-    setTOpen(false); load();
   };
 
   const saveAgent = async (e) => {
@@ -177,6 +192,7 @@ export default function Properties() {
       <div className="flex gap-1 justify-end">
         <button className="btn-ghost p-1.5" onClick={() => {
           setTEdit(r.id);
+          setTErr('');
           setTForm({
             ...tenantEmpty(), ...r,
             monthlyRent: r.monthlyRent ?? '',
@@ -239,7 +255,7 @@ export default function Properties() {
             </button>
           )}
           {tab === 'tenants' && (
-            <button className="btn-primary" onClick={() => { setTEdit(null); setTForm(tenantEmpty()); setTOpen(true); }}>
+            <button className="btn-primary" onClick={() => { setTEdit(null); setTErr(''); setTForm(tenantEmpty()); setTOpen(true); }}>
               <Plus size={16} /> Nuevo inquilino
             </button>
           )}
@@ -290,11 +306,16 @@ export default function Properties() {
         title={tEdit ? 'Editar inquilino' : 'Nuevo inquilino'}
         size="lg"
         footer={<>
-          <button className="btn-secondary" onClick={() => setTOpen(false)}>Cancelar</button>
-          <button className="btn-primary" onClick={saveTenant}>Guardar</button>
+          <button className="btn-secondary" onClick={() => setTOpen(false)} disabled={tSaving}>Cancelar</button>
+          <button className="btn-primary" onClick={saveTenant} disabled={tSaving}>{tSaving ? 'Guardando...' : 'Guardar'}</button>
         </>}
       >
         <form onSubmit={saveTenant} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tErr && (
+            <div className="md:col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {tErr}
+            </div>
+          )}
           <div><label className="label">Nombre</label><input className="input" required value={tForm.name} onChange={(e) => setTForm({ ...tForm, name: e.target.value })} /></div>
           <div><label className="label">Cédula / ID</label><input className="input" value={tForm.identification} onChange={(e) => setTForm({ ...tForm, identification: e.target.value })} /></div>
           <div><label className="label">Teléfono</label><input className="input" value={tForm.phone} onChange={(e) => setTForm({ ...tForm, phone: e.target.value })} /></div>
