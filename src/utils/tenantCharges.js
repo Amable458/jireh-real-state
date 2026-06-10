@@ -2,95 +2,166 @@ import { db } from '../db/database.js';
 import { fmtCur } from './currency.js';
 
 // ============================================================
-// Genera, a partir del catálogo de Inquilinos, el par mensual:
-//   1) INGRESO  — cobro de la renta completa (pendiente)
-//   2) GASTO    — pago al propietario = renta − comisión (pendiente)
+// Generación mensual a partir del catálogo de Inquilinos.
 //
-// Reglas:
-//  - Solo inquilinos con renta > 0 y % comisión > 0, dentro de la
-//    ventana del contrato.
-//  - Idempotente por mes: claves tenant_<id> (ingreso) y
-//    tenant_owner_<id> (gasto), con índices únicos en BD.
-//  - El gasto se crea SOLO junto con el ingreso del mes. Si el usuario
-//    elimina el gasto después, NO se regenera (mientras el ingreso siga
-//    existiendo). Si elimina el ingreso, el par se regenera.
+// Modelo:
+//  1) INGRESO de renta (pendiente) → se genera cada mes.
+//     Idempotente por (tenantId, mes): un inquilino = una renta/mes.
+//  2) GASTO "pago a propietario" → NO se genera junto con la renta.
+//     Solo nace cuando la renta se marca PAGADA (ya cobré, ahora le
+//     debo al dueño). Eso se maneja con onRentalStatusChange().
+//
+//  cleanupOwnerPayments() elimina gastos de propietario cuya renta
+//  esté pendiente o ya no exista (limpia generaciones viejas/huérfanas).
 // ============================================================
-export async function ensureTenantCharges(year, month) {
+
+const OWNER_KEY = (tenantId) => `tenant_owner_${tenantId}`;
+const RENT_KEY = (tenantId) => `tenant_${tenantId}`;
+
+// 1) Genera los ingresos de renta pendientes del mes
+export async function ensureTenantIncomes(year, month) {
   try {
-    const [currentIncomes, currentExpenses, tenants, properties] = await Promise.all([
+    const [current, tenants, properties] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
-      db.expenses.where({ year, month }).toArray(),
       db.tenants.toArray(),
       db.properties.toArray()
     ]);
-    const incomeKeys = new Set(currentIncomes.filter((r) => r.recurringKey).map((r) => r.recurringKey));
-    const expenseKeys = new Set(currentExpenses.filter((e) => e.recurringKey).map((e) => e.recurringKey));
+    // Idempotencia robusta: si ya hay una renta de ese inquilino este mes
+    // (sin importar su recurringKey o estado), no se genera otra.
+    const existingTenantIds = new Set(
+      current.filter((r) => (r.kind || 'renta') === 'renta' && r.tenantId).map((r) => r.tenantId)
+    );
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
     const lastDay = monthEnd.getDate();
 
-    const incomes = [];
-    const ownerExpenses = [];
-
+    const toCreate = [];
     for (const t of tenants) {
       const rent = Number(t.monthlyRent) || 0;
       const pct = Number(t.commissionPercent) || 0;
-      if (rent <= 0 || pct <= 0) continue;                 // sin % configurado → no genera
-      if (incomeKeys.has(`tenant_${t.id}`)) continue;      // par ya generado este mes
+      if (rent <= 0 || pct <= 0) continue;
+      if (existingTenantIds.has(t.id)) continue;
       if (t.contractStart && new Date(`${t.contractStart}T00:00:00`) > monthEnd) continue;
       if (t.contractEnd && new Date(`${t.contractEnd}T00:00:00`) < monthStart) continue;
 
       const day = Math.min(Math.max(Number(t.collectionDay) || 1, 1), lastDay);
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const ccy = t.currency === 'USD' ? 'USD' : 'DOP';
       const rate = ccy === 'USD' ? (t.exchangeRate ?? null) : null;
       const commissionAmount = Math.round(rent * pct) / 100;
-      const ownerAmount = Math.round((rent - commissionAmount) * 100) / 100;
       const property = properties.find((p) => p.id === t.propertyId);
-      const ownerName = (property?.owner || '').trim();
-      const now = new Date().toISOString();
-
-      incomes.push({
+      toCreate.push({
         year, month, kind: 'renta', category: 'Renta',
-        date: dateStr,
+        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
         propertyId: t.propertyId ?? null, propertyName: t.propertyName || property?.name || '',
         tenantId: t.id, tenantName: t.name || '',
         agentId: null, agentName: '',
-        amount: rent, paid: 0, status: 'pendiente',        // a cobrar: la renta completa
-        commissionPercent: pct, commissionAmount,           // lo nuestro: la comisión
+        amount: rent, paid: 0, status: 'pendiente',
+        commissionPercent: pct, commissionAmount,
         currency: ccy, exchangeRate: rate,
         notes: `Renta de ${t.name} — nuestra comisión ${pct}% = ${fmtCur(commissionAmount, ccy)}`,
-        recurring: 0, recurringKey: `tenant_${t.id}`,
-        createdAt: now
+        recurring: 0, recurringKey: RENT_KEY(t.id),
+        createdAt: new Date().toISOString()
       });
-
-      if (ownerAmount > 0 && !expenseKeys.has(`tenant_owner_${t.id}`)) {
-        ownerExpenses.push({
-          year, month,
-          description: `Pago a propietario${ownerName ? ` ${ownerName}` : ''} — ${property?.name || t.propertyName || `renta ${t.name}`}`,
-          monthly: ownerAmount,
-          q1: day <= 15 ? ownerAmount : 0,
-          q2: day > 15 ? ownerAmount : 0,
-          paymentDate: dateStr,
-          status: 'pendiente',
-          currency: ccy, exchangeRate: rate,
-          recurring: 0, recurringKey: `tenant_owner_${t.id}`,
-          notes: `Renta ${fmtCur(rent, ccy)} − comisión ${pct}% (${fmtCur(commissionAmount, ccy)}) — inquilino ${t.name}`,
-          createdAt: now
-        });
-      }
     }
-
-    if (incomes.length) {
-      try { await db.rentals.bulkAdd(incomes); }
+    if (toCreate.length) {
+      try { await db.rentals.bulkAdd(toCreate); }
       catch (e) { console.warn('[Jireh] Generación de cobros de inquilinos:', e.message); }
     }
-    // Uno por uno: un conflicto puntual (índice único) no bloquea al resto
-    for (const ex of ownerExpenses) {
-      try { await db.expenses.add(ex); }
-      catch (e) { console.warn('[Jireh] Generación de pago a propietario:', e.message); }
+  } catch (e) {
+    console.warn('[Jireh] ensureTenantIncomes:', e.message);
+  }
+}
+
+// 2) Elimina gastos de propietario cuya renta no esté pagada (o no exista).
+//    NO crea gastos — la creación es por evento (al marcar la renta pagada).
+export async function cleanupOwnerPayments(year, month) {
+  try {
+    const [rentals, expenses] = await Promise.all([
+      db.rentals.where({ year, month }).toArray(),
+      db.expenses.where({ year, month }).toArray()
+    ]);
+    const paidTenantIds = new Set(
+      rentals.filter((r) => r.tenantId && r.status === 'pagado').map((r) => r.tenantId)
+    );
+    const ownerExpenses = expenses.filter((e) => (e.recurringKey || '').startsWith('tenant_owner_'));
+    for (const e of ownerExpenses) {
+      const tenantId = Number((e.recurringKey || '').replace('tenant_owner_', ''));
+      if (!paidTenantIds.has(tenantId)) {
+        try { await db.expenses.delete(e.id); }
+        catch (err) { console.warn('[Jireh] Limpieza pago propietario:', err.message); }
+      }
     }
   } catch (e) {
-    console.warn('[Jireh] ensureTenantCharges:', e.message);
+    console.warn('[Jireh] cleanupOwnerPayments:', e.message);
   }
+}
+
+// Crea el gasto "pago a propietario" para una renta que acaba de cobrarse.
+// Idempotente por recurringKey tenant_owner_<id> + índice único en BD.
+export async function createOwnerPayment(rental) {
+  try {
+    if (!rental?.tenantId) return;
+    const commission = rental.commissionAmount != null
+      ? Number(rental.commissionAmount)
+      : (Number(rental.amount) || 0) * (Number(rental.commissionPercent) || 0) / 100;
+    const ownerAmount = Math.round(((Number(rental.amount) || 0) - commission) * 100) / 100;
+    if (ownerAmount <= 0) return;
+
+    const key = OWNER_KEY(rental.tenantId);
+    const existing = await db.expenses.where({ year: rental.year, month: rental.month }).toArray();
+    if (existing.some((e) => e.recurringKey === key)) return; // ya existe
+
+    const properties = await db.properties.toArray();
+    const property = properties.find((p) => p.id === rental.propertyId);
+    const ownerName = (property?.owner || '').trim();
+    const ccy = rental.currency === 'USD' ? 'USD' : 'DOP';
+    const day = Number(String(rental.date || '').slice(8, 10)) || 1;
+
+    await db.expenses.add({
+      year: rental.year, month: rental.month,
+      description: `Pago a propietario${ownerName ? ` ${ownerName}` : ''} — ${property?.name || rental.propertyName || `renta ${rental.tenantName}`}`,
+      monthly: ownerAmount,
+      q1: day <= 15 ? ownerAmount : 0,
+      q2: day > 15 ? ownerAmount : 0,
+      paymentDate: rental.date,
+      status: 'pendiente',
+      currency: ccy, exchangeRate: rental.exchangeRate ?? null,
+      recurring: 0, recurringKey: key,
+      notes: `Renta ${fmtCur(rental.amount, ccy)} − comisión ${fmtCur(commission, ccy)} — inquilino ${rental.tenantName}`,
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.warn('[Jireh] createOwnerPayment:', e.message);
+  }
+}
+
+// Elimina el gasto de propietario de una renta (cuando deja de estar pagada)
+export async function removeOwnerPayment(rental) {
+  try {
+    if (!rental?.tenantId) return;
+    const key = OWNER_KEY(rental.tenantId);
+    const existing = await db.expenses.where({ year: rental.year, month: rental.month }).toArray();
+    for (const e of existing) {
+      if (e.recurringKey === key) {
+        try { await db.expenses.delete(e.id); } catch { /* ignore */ }
+      }
+    }
+  } catch (e) {
+    console.warn('[Jireh] removeOwnerPayment:', e.message);
+  }
+}
+
+// Reacciona al cambio de estado de una renta de inquilino.
+export async function onRentalStatusChange(rental, prevStatus) {
+  if (!rental?.tenantId) return;
+  const nowPaid = rental.status === 'pagado';
+  const wasPaid = prevStatus === 'pagado';
+  if (nowPaid && !wasPaid) await createOwnerPayment(rental);
+  else if (!nowPaid && wasPaid) await removeOwnerPayment(rental);
+}
+
+// Wrapper para las páginas: genera rentas pendientes y limpia pagos huérfanos.
+export async function ensureTenantCharges(year, month) {
+  await ensureTenantIncomes(year, month);
+  await cleanupOwnerPayments(year, month);
 }

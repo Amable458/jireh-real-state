@@ -54,7 +54,7 @@ export default function Expenses() {
 
   const load = async () => {
     await ensureRecurring();
-    await ensureTenantCharges(year, month); // genera pago a propietario si falta
+    await ensureTenantCharges(year, month); // genera rentas pendientes y limpia pagos a propietario huérfanos
     const r = await db.expenses.where({ year, month }).toArray();
     setRows(r);
   };

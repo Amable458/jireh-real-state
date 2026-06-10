@@ -54,7 +54,7 @@ export default function Dashboard() {
   const canEditRate = hasRole('SuperAdmin', 'Admin');
 
   const load = async () => {
-    await ensureTenantCharges(year, month); // genera cobro de renta + pago a propietario del mes
+    await ensureTenantCharges(year, month); // genera rentas pendientes; el pago a propietario nace al cobrar
     setTotals(await monthlyTotals(year, month));
     setSeries(await yearMonthlySeries(year));
     const tenants = await db.tenants.toArray();
@@ -95,7 +95,7 @@ export default function Dashboard() {
   const negativeBase = base.surplus < 0;
   const showDeficit = view === 'CONVERTED' ? negativeBase : view === 'USD' ? negativeUSD : negativeDOP;
 
-  // Tarjetas según la vista
+  // Tarjetas según la vista (sin comisiones: van en su panel dedicado abajo)
   const renderCards = () => {
     if (view === 'BOTH') {
       return (
@@ -106,8 +106,6 @@ export default function Dashboard() {
           <StatCard icon={TrendingDown} label="Gastos US$" value={fmtCur(usd.expensesAll, 'USD')} color="bg-red-600" />
           <StatCard icon={Wallet} label="Balance RD$" value={fmtCur(dop.surplus, 'DOP')} color={negativeDOP ? 'bg-red-500' : 'bg-ink-900'} />
           <StatCard icon={Wallet} label="Balance US$" value={fmtCur(usd.surplus, 'USD')} color={negativeUSD ? 'bg-red-500' : 'bg-ink-800'} />
-          <StatCard icon={FileText} label="Comisiones RD$" value={fmtCur(dop.commissions, 'DOP')} color="bg-amber-500" />
-          <StatCard icon={FileText} label="Comisiones US$" value={fmtCur(usd.commissions, 'USD')} color="bg-amber-600" />
         </>
       );
     }
@@ -120,12 +118,11 @@ export default function Dashboard() {
         <StatCard icon={TrendingUp} label={`Ingresos totales${suffix}`} value={fmtCur(d.totalIncome, ccy)} color="bg-emerald-500" sub={`Rentas: ${fmtCur((d.rentalsPaid || 0) + (d.rentalsPartial || 0), ccy)}`} />
         <StatCard icon={TrendingDown} label={`Gastos totales${suffix}`} value={fmtCur(d.expensesAll, ccy)} color="bg-red-500" sub={`Pagados: ${fmtCur(d.expensesPaid || 0, ccy)}`} />
         <StatCard icon={Wallet} label={`Balance neto${suffix}`} value={fmtCur(d.surplus, ccy)} color={neg ? 'bg-red-500' : 'bg-ink-900'} sub={neg ? 'Déficit del mes' : 'Excedente disponible'} />
-        <StatCard icon={FileText} label={`Comisiones${suffix}`} value={fmtCur(d.commissions, ccy)} color="bg-amber-500" sub={`${totals.sales.length} venta(s)`} />
       </>
     );
   };
 
-  // Resumen de rentas de inquilinos: cuánto se cobra vs cuánto nos toca (comisión)
+  // Resumen de rentas de inquilinos + comisión total (rentas + ventas)
   const rentSummary = (() => {
     const mk = () => ({ rent: 0, comm: 0, count: 0 });
     const s = { DOP: mk(), USD: mk() };
@@ -136,9 +133,14 @@ export default function Dashboard() {
       s[c].comm += Number(r.commissionAmount) || 0;
       s[c].count += 1;
     }
+    // Sumar también la comisión de ventas (cierres) a "lo que nos toca"
+    for (const v of totals.sales) {
+      const c = recCurrency(v);
+      s[c].comm += Number(v.commission) || 0;
+    }
     return s;
   })();
-  const hasRentSummary = rentSummary.DOP.count > 0 || rentSummary.USD.count > 0;
+  const hasCommission = rentSummary.DOP.comm > 0 || rentSummary.USD.comm > 0 || rentSummary.DOP.count > 0 || rentSummary.USD.count > 0;
 
   // Datos de la gráfica según vista
   const chartData = series.map((s) => {
@@ -197,19 +199,21 @@ export default function Dashboard() {
         {renderCards()}
       </div>
 
-      {hasRentSummary && (
+      {hasCommission && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
           <div className="card card-body">
             <p className="text-xs uppercase font-semibold text-ink-500 mb-1">Rentas de inquilinos (cobro del mes)</p>
             {rentSummary.DOP.count > 0 && <p className="text-lg font-bold text-ink-900">{fmtCur(rentSummary.DOP.rent, 'DOP')}</p>}
             {rentSummary.USD.count > 0 && <p className="text-lg font-bold text-ink-900">{fmtCur(rentSummary.USD.rent, 'USD')}</p>}
+            {rentSummary.DOP.count + rentSummary.USD.count === 0 && <p className="text-lg font-bold text-ink-400">—</p>}
             <p className="text-xs text-ink-500 mt-1">{rentSummary.DOP.count + rentSummary.USD.count} renta(s) — monto total a cobrar a inquilinos</p>
           </div>
           <div className="card card-body">
             <p className="text-xs uppercase font-semibold text-ink-500 mb-1">Comisión — lo que nos toca</p>
-            {rentSummary.DOP.count > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.DOP.comm, 'DOP')}</p>}
-            {rentSummary.USD.count > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.USD.comm, 'USD')}</p>}
-            <p className="text-xs text-ink-500 mt-1">Parte de la empresa según el % de cada inquilino</p>
+            {rentSummary.DOP.comm > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.DOP.comm, 'DOP')}</p>}
+            {rentSummary.USD.comm > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.USD.comm, 'USD')}</p>}
+            {rentSummary.DOP.comm === 0 && rentSummary.USD.comm === 0 && <p className="text-lg font-bold text-ink-400">—</p>}
+            <p className="text-xs text-ink-500 mt-1">Comisión de rentas (% de inquilinos) + comisión de ventas</p>
           </div>
         </div>
       )}

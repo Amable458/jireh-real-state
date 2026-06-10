@@ -12,7 +12,15 @@ export const fmtNumber = (n) =>
 
 export const fmtDate = (d) => {
   if (!d) return '';
-  const date = typeof d === 'string' ? new Date(d) : d;
+  // Fechas tipo "YYYY-MM-DD" se parsean como locales (no UTC) para evitar
+  // que un huso horario las muestre un día antes.
+  let date;
+  if (typeof d === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+    date = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
+  } else {
+    date = d;
+  }
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };

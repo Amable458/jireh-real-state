@@ -13,7 +13,7 @@ import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
-import { ensureTenantCharges } from '../utils/tenantCharges.js';
+import { ensureTenantCharges, onRentalStatusChange, removeOwnerPayment } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const STATUS = [
@@ -148,7 +148,10 @@ export default function Rentals() {
     }
 
     const recurring = form.recurring ? 1 : 0;
-    const recurringKey = recurring ? (form.recurringKey || genRecurringKey()) : null;
+    // Preservar SIEMPRE el recurringKey existente (ej. tenant_52). Solo
+    // generar uno nuevo si el usuario marca "recurrente" y no había clave.
+    let recurringKey = form.recurringKey || null;
+    if (recurring && !recurringKey) recurringKey = genRecurringKey();
 
     const currency = form.currency === 'USD' ? 'USD' : 'DOP';
     const exchangeRate = currency === 'USD' ? (Number(form.exchangeRate) || usdToDop) : null;
@@ -198,11 +201,19 @@ export default function Rentals() {
     setSaveErr(''); setSaving(true);
     try {
       if (editId) {
+        const prevStatus = rows.find((r) => r.id === editId)?.status;
         await db.rentals.update(editId, payload);
         await logActivity(user.sub, user.username, 'income.update', `id=${editId} kind=${payload.kind}`);
+        // Renta de inquilino: al cobrarla nace el pago al propietario; al revertir, se elimina
+        if (payload.tenantId && payload.commissionPercent != null) {
+          await onRentalStatusChange({ ...payload, id: editId }, prevStatus);
+        }
       } else {
         const id = await db.rentals.add({ ...payload, createdAt: new Date().toISOString() });
         await logActivity(user.sub, user.username, 'income.create', `id=${id} kind=${payload.kind}`);
+        if (payload.tenantId && payload.commissionPercent != null && payload.status === 'pagado') {
+          await onRentalStatusChange({ ...payload, id }, 'pendiente');
+        }
       }
       setOpen(false);
       await load();
@@ -219,7 +230,12 @@ export default function Rentals() {
   };
 
   const remove = async (id) => {
+    const row = rows.find((r) => r.id === id);
     await db.rentals.delete(id);
+    // Si era renta de inquilino, eliminar también su pago al propietario
+    if (row?.tenantId && row?.commissionPercent != null) {
+      await removeOwnerPayment(row);
+    }
     await logActivity(user.sub, user.username, 'income.delete', `id=${id}`);
     load();
   };
