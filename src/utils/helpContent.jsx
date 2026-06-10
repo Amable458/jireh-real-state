@@ -58,11 +58,16 @@ const HELP = {
   rentals: (
     <>
       <Section title="¿Qué se registra aquí?">
-        <p>Todos los ingresos del periodo. Al crear uno, elija el tipo:</p>
+        <p>Todos los ingresos del periodo:</p>
         <ul className="list-disc list-inside text-xs space-y-1 mt-1">
-          <li><b>Renta:</b> cobro mensual por propiedad e inquilino, con agente. Cuenta para bonificaciones.</li>
-          <li><b>Otro ingreso:</b> por contrato, por administración de propiedad, o una categoría personalizada. No genera bonificación de agente.</li>
+          <li><b>Rentas:</b> se generan <b>automáticamente desde Inquilinos</b> cada mes (renta fija + % de comisión + día de cobro). No se crean manualmente aquí.</li>
+          <li><b>Otro ingreso</b> (botón "Nuevo ingreso"): por contrato, por administración de propiedad, o una categoría personalizada.</li>
         </ul>
+      </Section>
+      <Section title="Monto vs comisión">
+        <Formula>Monto = renta completa que paga el inquilino</Formula>
+        <Formula>Comisión = Monto × (% del inquilino / 100) — lo que nos toca</Formula>
+        <p>La columna <b>% Comisión</b> muestra el porcentaje y el monto que corresponde a la empresa. El Dashboard resume renta total vs comisión del mes.</p>
       </Section>
       <Section title="Categoría y notas">
         <p>La columna <b>Categoría</b> muestra el tipo de cada ingreso. La columna <b>Notas</b> muestra un ícono: si tiene comentarios, es clickeable para verlos; si no, aparece atenuado.</p>

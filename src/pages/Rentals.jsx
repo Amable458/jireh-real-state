@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Home, FileText, MessageSquare, MessageSquareText, Repeat } from 'lucide-react';
+import { Plus, Edit2, Trash2, MessageSquare, MessageSquareText, Repeat } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -46,7 +46,6 @@ export default function Rentals() {
   const [props, setProps] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [chooser, setChooser] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyRenta());
   const [editId, setEditId] = useState(null);
@@ -111,17 +110,19 @@ export default function Rentals() {
       if (t.contractEnd && new Date(`${t.contractEnd}T00:00:00`) < monthStart) continue;
 
       const day = Math.min(Math.max(Number(t.collectionDay) || 1, 1), lastDay);
-      const amount = Math.round(rent * pct) / 100; // rent × pct / 100 con 2 decimales
+      const ccy = t.currency === 'USD' ? 'USD' : 'DOP';
+      const commissionAmount = Math.round(rent * pct) / 100; // renta × pct / 100 con 2 decimales
       toCreate.push({
         year, month, kind: 'renta', category: 'Renta',
         date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
         propertyId: t.propertyId ?? null, propertyName: t.propertyName || '',
         tenantId: t.id, tenantName: t.name || '',
         agentId: null, agentName: '',
-        amount, paid: 0, status: 'pendiente',
-        currency: t.currency || 'DOP',
-        exchangeRate: (t.currency === 'USD' ? (t.exchangeRate ?? null) : null),
-        notes: `Comisión ${pct}% de renta ${t.currency === 'USD' ? 'US$' : 'RD$'}${rent.toLocaleString('es-DO')} — ${t.name}`,
+        amount: rent, paid: 0, status: 'pendiente',   // a cobrar: la renta completa
+        commissionPercent: pct, commissionAmount,      // lo nuestro: la comisión
+        currency: ccy,
+        exchangeRate: (ccy === 'USD' ? (t.exchangeRate ?? null) : null),
+        notes: `Renta de ${t.name} — nuestra comisión ${pct}% = ${fmtCur(commissionAmount, ccy)}`,
         recurring: 0, recurringKey: `tenant_${t.id}`,
         createdAt: new Date().toISOString()
       });
@@ -146,13 +147,12 @@ export default function Rentals() {
   useEffect(() => { load(); }, [year, month]);
   useRealtimeTable(['rentals', 'properties', 'tenants', 'agents'], () => load());
 
-  const onAdd = () => setChooser(true);
-
-  const pickKind = (kind) => {
+  // Las rentas nacen automáticamente desde Inquilinos; aquí solo se
+  // registran "otros ingresos" manualmente.
+  const onAdd = () => {
     setEditId(null);
     setSaveErr('');
-    setForm(kind === 'renta' ? emptyRenta() : emptyOtro());
-    setChooser(false);
+    setForm(emptyOtro());
     setOpen(true);
   };
 
@@ -216,6 +216,11 @@ export default function Rentals() {
         paid: Number(form.paid) || 0,
         status: form.status,
         currency, exchangeRate,
+        // Si la renta viene de un inquilino con % de comisión, recalcula lo nuestro sobre el monto
+        commissionPercent: form.commissionPercent ?? null,
+        commissionAmount: form.commissionPercent != null && form.commissionPercent !== ''
+          ? Math.round((Number(form.amount) || 0) * Number(form.commissionPercent)) / 100
+          : null,
         notes: form.notes || '',
         recurring, recurringKey
       };
@@ -306,6 +311,11 @@ export default function Rentals() {
       <span className={recCurrency(r) === 'USD' ? 'badge-warning' : 'badge-slate'}>{recCurrency(r)}</span>
     )},
     { key: 'amount', label: 'Monto', render: (r) => fmtCur(r.amount, recCurrency(r)), cellClassName: 'font-medium' },
+    { key: 'commissionAmount', label: '% Comisión', render: (r) =>
+      r.commissionPercent != null && r.commissionPercent !== ''
+        ? <span className="badge-info">{Number(r.commissionPercent)}% = {fmtCur(r.commissionAmount ?? (Number(r.amount) || 0) * Number(r.commissionPercent) / 100, recCurrency(r))}</span>
+        : <span className="text-ink-300">—</span>
+    },
     { key: 'paid', label: 'Pagado', render: (r) => fmtCur(r.paid, recCurrency(r)) },
     { key: 'status', label: 'Estado', render: (r) => {
       const c = r.status === 'pagado' ? 'badge-success' : r.status === 'parcial' ? 'badge-warning' : 'badge-danger';
@@ -370,32 +380,6 @@ export default function Rentals() {
         </div>
         <DataTable columns={columns} rows={visibleRows} />
       </div>
-
-      {/* Selector de tipo de ingreso */}
-      <Modal
-        open={chooser} onClose={() => setChooser(false)}
-        title="¿Qué tipo de ingreso desea registrar?"
-        size="md"
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <button
-            onClick={() => pickKind('renta')}
-            className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-ink-200 hover:border-brand-500 hover:bg-brand-50 transition-colors"
-          >
-            <div className="bg-brand-500 text-ink-900 p-3 rounded-lg"><Home size={26} /></div>
-            <span className="font-semibold text-ink-800">Renta</span>
-            <span className="text-xs text-ink-500 text-center">Cobro mensual por propiedad e inquilino. Cuenta para bonificaciones.</span>
-          </button>
-          <button
-            onClick={() => pickKind('otro')}
-            className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-ink-200 hover:border-brand-500 hover:bg-brand-50 transition-colors"
-          >
-            <div className="bg-ink-800 text-white p-3 rounded-lg"><FileText size={26} /></div>
-            <span className="font-semibold text-ink-800">Otro ingreso</span>
-            <span className="text-xs text-ink-500 text-center">Por contrato, administración de propiedad u otra categoría.</span>
-          </button>
-        </div>
-      </Modal>
 
       {/* Formulario de ingreso */}
       <Modal

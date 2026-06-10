@@ -123,6 +123,21 @@ export default function Dashboard() {
     );
   };
 
+  // Resumen de rentas de inquilinos: cuánto se cobra vs cuánto nos toca (comisión)
+  const rentSummary = (() => {
+    const mk = () => ({ rent: 0, comm: 0, count: 0 });
+    const s = { DOP: mk(), USD: mk() };
+    for (const r of totals.rentals) {
+      if (r.commissionAmount == null && r.commissionPercent == null) continue;
+      const c = recCurrency(r);
+      s[c].rent += Number(r.amount) || 0;
+      s[c].comm += Number(r.commissionAmount) || 0;
+      s[c].count += 1;
+    }
+    return s;
+  })();
+  const hasRentSummary = rentSummary.DOP.count > 0 || rentSummary.USD.count > 0;
+
   // Datos de la gráfica según vista
   const chartData = series.map((s) => {
     const name = monthName(s.month).slice(0, 3);
@@ -179,6 +194,23 @@ export default function Dashboard() {
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${view === 'BOTH' ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4 mb-5`}>
         {renderCards()}
       </div>
+
+      {hasRentSummary && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div className="card card-body">
+            <p className="text-xs uppercase font-semibold text-ink-500 mb-1">Rentas de inquilinos (cobro del mes)</p>
+            {rentSummary.DOP.count > 0 && <p className="text-lg font-bold text-ink-900">{fmtCur(rentSummary.DOP.rent, 'DOP')}</p>}
+            {rentSummary.USD.count > 0 && <p className="text-lg font-bold text-ink-900">{fmtCur(rentSummary.USD.rent, 'USD')}</p>}
+            <p className="text-xs text-ink-500 mt-1">{rentSummary.DOP.count + rentSummary.USD.count} renta(s) — monto total a cobrar a inquilinos</p>
+          </div>
+          <div className="card card-body">
+            <p className="text-xs uppercase font-semibold text-ink-500 mb-1">Comisión — lo que nos toca</p>
+            {rentSummary.DOP.count > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.DOP.comm, 'DOP')}</p>}
+            {rentSummary.USD.count > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.USD.comm, 'USD')}</p>}
+            <p className="text-xs text-ink-500 mt-1">Parte de la empresa según el % de cada inquilino</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
         <div className="card card-body lg:col-span-2">
