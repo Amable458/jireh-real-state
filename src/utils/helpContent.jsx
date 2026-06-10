@@ -185,7 +185,9 @@ const HELP = {
       <Section title="Renta fija con % de comisión (cobro automático)">
         <p>Cada inquilino define una <b>renta mensual fija</b> (en RD$ o US$), un <b>% de comisión</b> (lo que la empresa gana) y un <b>día de cobro</b>.</p>
         <Formula>Ingreso mensual generado = Renta mensual × (% comisión / 100)</Formula>
-        <p>Cada mes, al abrir Ingresos, se genera automáticamente ese cobro como <b>pendiente</b> en la fecha de cobro. Se marca como pagado manualmente cuando se cobra. Si el % de comisión está vacío, no se genera nada.</p>
+        <p>Cada mes se genera automáticamente el cobro de la renta completa como <b>pendiente</b> en la fecha de cobro. Se marca como pagado manualmente cuando se cobra. Si el % de comisión está vacío, no se genera nada.</p>
+        <Formula>Pago a propietario = Renta − Comisión (se genera como GASTO pendiente)</Formula>
+        <p>Junto con el cobro, en <b>Gastos Mensuales</b> aparece el pago al propietario (usa el nombre del campo "Propietario" de la propiedad). Se marca pagado manualmente, o se puede eliminar — no se regenera mientras exista el cobro del mes. Así el balance neto del mes refleja solo la comisión.</p>
         <p>Solo se genera dentro de la ventana del contrato (entre inicio y fin de contrato).</p>
       </Section>
       <Section title="Alertas de vencimiento">

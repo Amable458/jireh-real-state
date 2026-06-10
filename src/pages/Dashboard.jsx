@@ -12,6 +12,7 @@ import { useSettings } from '../store/settings.js';
 import { monthName } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { monthlyTotals, yearMonthlySeries } from '../utils/calc.js';
+import { ensureTenantCharges } from '../utils/tenantCharges.js';
 import { db } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 
@@ -53,6 +54,7 @@ export default function Dashboard() {
   const canEditRate = hasRole('SuperAdmin', 'Admin');
 
   const load = async () => {
+    await ensureTenantCharges(year, month); // genera cobro de renta + pago a propietario del mes
     setTotals(await monthlyTotals(year, month));
     setSeries(await yearMonthlySeries(year));
     const tenants = await db.tenants.toArray();

@@ -13,6 +13,7 @@ import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
+import { ensureTenantCharges } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const STATUS = [
@@ -86,56 +87,9 @@ export default function Rentals() {
     catch (e) { console.warn('[Jireh] Copia de ingresos recurrentes (posible duplicado concurrente):', e.message); }
   };
 
-  // Genera, a partir del catálogo de Inquilinos, el cobro mensual de comisión
-  // (monthlyRent × commissionPercent) como ingreso "pendiente" en la fecha de cobro.
-  // Idempotente: usa recurringKey = tenant_<id> para no duplicar dentro del mes.
-  const ensureTenantIncomes = async () => {
-    const [current, allTenants] = await Promise.all([
-      db.rentals.where({ year, month }).toArray(),
-      db.tenants.toArray()
-    ]);
-    const existingKeys = new Set(current.filter((r) => r.recurringKey).map((r) => r.recurringKey));
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0);
-    const lastDay = monthEnd.getDate();
-
-    const toCreate = [];
-    for (const t of allTenants) {
-      const rent = Number(t.monthlyRent) || 0;
-      const pct = Number(t.commissionPercent) || 0;
-      if (rent <= 0 || pct <= 0) continue;                 // sin % configurado → no genera
-      if (existingKeys.has(`tenant_${t.id}`)) continue;    // ya generado este mes
-      // Solo dentro de la ventana del contrato
-      if (t.contractStart && new Date(`${t.contractStart}T00:00:00`) > monthEnd) continue;
-      if (t.contractEnd && new Date(`${t.contractEnd}T00:00:00`) < monthStart) continue;
-
-      const day = Math.min(Math.max(Number(t.collectionDay) || 1, 1), lastDay);
-      const ccy = t.currency === 'USD' ? 'USD' : 'DOP';
-      const commissionAmount = Math.round(rent * pct) / 100; // renta × pct / 100 con 2 decimales
-      toCreate.push({
-        year, month, kind: 'renta', category: 'Renta',
-        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-        propertyId: t.propertyId ?? null, propertyName: t.propertyName || '',
-        tenantId: t.id, tenantName: t.name || '',
-        agentId: null, agentName: '',
-        amount: rent, paid: 0, status: 'pendiente',   // a cobrar: la renta completa
-        commissionPercent: pct, commissionAmount,      // lo nuestro: la comisión
-        currency: ccy,
-        exchangeRate: (ccy === 'USD' ? (t.exchangeRate ?? null) : null),
-        notes: `Renta de ${t.name} — nuestra comisión ${pct}% = ${fmtCur(commissionAmount, ccy)}`,
-        recurring: 0, recurringKey: `tenant_${t.id}`,
-        createdAt: new Date().toISOString()
-      });
-    }
-    if (toCreate.length) {
-      try { await db.rentals.bulkAdd(toCreate); }
-      catch (e) { console.warn('[Jireh] Generación de cobros de inquilinos (posible duplicado concurrente):', e.message); }
-    }
-  };
-
   const load = async () => {
     await ensureRecurring();
-    await ensureTenantIncomes();
+    await ensureTenantCharges(year, month); // genera cobro de renta + pago a propietario
     const [r, p, t, a] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
       db.properties.toArray(),

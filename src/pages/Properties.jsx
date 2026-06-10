@@ -13,7 +13,7 @@ import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
-const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', rent: '', sale: '', status: 'disponible', notes: '' });
+const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', rent: '', sale: '', status: 'disponible', notes: '' });
 const tenantEmpty = () => ({
   name: '', phone: '', email: '', identification: '', propertyId: '',
   contractStart: todayISO(), contractEnd: '', monthlyRent: '', notes: '',
@@ -57,6 +57,7 @@ export default function Properties() {
     e.preventDefault();
     const payload = {
       name: pForm.name, type: pForm.type, address: pForm.address,
+      owner: pForm.owner || '',
       rent: Number(pForm.rent) || 0, sale: Number(pForm.sale) || 0,
       status: pForm.status, notes: pForm.notes
     };
@@ -159,12 +160,13 @@ export default function Properties() {
     { key: 'name', label: 'Nombre' },
     { key: 'type', label: 'Tipo' },
     { key: 'address', label: 'Dirección' },
+    { key: 'owner', label: 'Propietario', render: (r) => r.owner || '—' },
     { key: 'rent', label: 'Renta', render: (r) => fmtMoney(r.rent) },
     { key: 'sale', label: 'Venta', render: (r) => fmtMoney(r.sale) },
     { key: 'status', label: 'Estado', render: (r) => <span className="badge-info">{r.status}</span> },
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
-        <button className="btn-ghost p-1.5" onClick={() => { setPEdit(r.id); setPForm({ ...r, rent: r.rent ?? '', sale: r.sale ?? '' }); setPOpen(true); }}><Edit2 size={14} /></button>
+        <button className="btn-ghost p-1.5" onClick={() => { setPEdit(r.id); setPForm({ ...propEmpty(), ...r, rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '' }); setPOpen(true); }}><Edit2 size={14} /></button>
         <button className="btn-ghost p-1.5 text-red-600" onClick={() => setConfirm({ open: true, kind: 'property', id: r.id })}><Trash2 size={14} /></button>
       </div>
     )}
@@ -295,6 +297,7 @@ export default function Properties() {
             </select>
           </div>
           <div className="md:col-span-2"><label className="label">Dirección</label><input className="input" value={pForm.address} onChange={(e) => setPForm({ ...pForm, address: e.target.value })} /></div>
+          <div className="md:col-span-2"><label className="label">Propietario</label><input className="input" placeholder="Nombre del dueño de la propiedad (aparece en el pago automático)" value={pForm.owner} onChange={(e) => setPForm({ ...pForm, owner: e.target.value })} /></div>
           <div><label className="label">Renta sugerida (DOP)</label><input type="number" step="0.01" className="input" value={pForm.rent} onChange={(e) => setPForm({ ...pForm, rent: e.target.value })} /></div>
           <div><label className="label">Precio venta (DOP)</label><input type="number" step="0.01" className="input" value={pForm.sale} onChange={(e) => setPForm({ ...pForm, sale: e.target.value })} /></div>
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={pForm.notes} onChange={(e) => setPForm({ ...pForm, notes: e.target.value })} /></div>

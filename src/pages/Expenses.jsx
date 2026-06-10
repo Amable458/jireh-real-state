@@ -13,6 +13,7 @@ import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
+import { ensureTenantCharges } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const empty = () => ({
@@ -33,8 +34,10 @@ export default function Expenses() {
   const [curFilter, setCurFilter] = useState('all');
 
   const ensureRecurring = async () => {
-    const exists = await db.expenses.where({ year, month }).count();
-    if (exists > 0) return;
+    const current = await db.expenses.where({ year, month }).toArray();
+    // Los pagos a propietario auto-generados no cuentan: solo gastos manuales
+    const manual = current.filter((e) => !(e.recurringKey || '').startsWith('tenant_owner_'));
+    if (manual.length > 0) return;
     const prev = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
     const previous = await db.expenses.where({ year: prev.y, month: prev.m }).toArray();
     const recurring = previous.filter((e) => e.recurring);
@@ -44,12 +47,14 @@ export default function Expenses() {
       paymentDate: `${year}-${String(month).padStart(2, '0')}-15`,
       createdAt: new Date().toISOString()
     }));
-    await db.expenses.bulkAdd(cloned);
+    try { await db.expenses.bulkAdd(cloned); }
+    catch (e) { console.warn('[Jireh] Copia de gastos recurrentes:', e.message); }
     await logActivity(user.sub, user.username, 'expenses.autocopy', `${cloned.length} de ${prev.y}-${prev.m}`);
   };
 
   const load = async () => {
     await ensureRecurring();
+    await ensureTenantCharges(year, month); // genera pago a propietario si falta
     const r = await db.expenses.where({ year, month }).toArray();
     setRows(r);
   };
