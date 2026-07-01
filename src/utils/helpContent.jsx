@@ -69,6 +69,11 @@ const HELP = {
         <Formula>Comisión = Monto × (% del inquilino / 100) — lo que nos toca</Formula>
         <p>La columna <b>% Comisión</b> muestra el porcentaje y el monto que corresponde a la empresa. El Dashboard resume renta total vs comisión del mes.</p>
       </Section>
+      <Section title="Contrato de renta (cuentas por pagar)">
+        <p>Al registrar un "otro ingreso" con categoría <b>Contrato de renta</b> y marcarlo como <b>pagado</b>, el sistema genera automáticamente en <b>Gastos Mensuales</b> las cuentas por pagar del desglose (abogado notario, abogado inmobiliaria, data crédito, gestor). Tu ingreso real es el monto del contrato menos esas cuentas.</p>
+        <Formula>Ingreso real = Monto del contrato − suma de cuentas por pagar</Formula>
+        <p>Si reviertes el ingreso a pendiente o lo eliminas, las cuentas por pagar se borran. El desglose y sus montos se editan con el botón <b>"Desglose contrato"</b> (solo Admin/SuperAdmin).</p>
+      </Section>
       <Section title="Categoría y notas">
         <p>La columna <b>Categoría</b> muestra el tipo de cada ingreso. La columna <b>Notas</b> muestra un ícono: si tiene comentarios, es clickeable para verlos; si no, aparece atenuado.</p>
       </Section>

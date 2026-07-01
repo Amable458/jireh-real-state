@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, MessageSquare, MessageSquareText, Repeat } from 'lucide-react';
+import { Plus, Edit2, Trash2, MessageSquare, MessageSquareText, Repeat, Settings } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -14,6 +14,8 @@ import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { ensureTenantCharges, onRentalStatusChange, removeOwnerPayment } from '../utils/tenantCharges.js';
+import { onContractIncomeStatusChange, removeContractPayables, isContractIncome } from '../utils/contractCharges.js';
+import { CONTRATO_CATEGORY, normalizeFees, feesTotal } from '../utils/contractFees.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const STATUS = [
@@ -42,7 +44,8 @@ const genRecurringKey = () => `inc_${Date.now()}_${Math.random().toString(36).sl
 
 export default function Rentals() {
   const { year, month } = usePeriod();
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
+  const canConfig = hasRole('SuperAdmin', 'Admin');
   const [rows, setRows] = useState([]);
   const [props, setProps] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -55,7 +58,10 @@ export default function Rentals() {
   const [curFilter, setCurFilter] = useState('all'); // all | DOP | USD
   const [saveErr, setSaveErr] = useState('');
   const [saving, setSaving] = useState(false);
-  const { usdToDop } = useSettings();
+  const { usdToDop, contractFees, setContractFees } = useSettings();
+  const [feesModal, setFeesModal] = useState(false);
+  const [feesDraft, setFeesDraft] = useState([]);
+  const [feesErr, setFeesErr] = useState('');
 
   // Copia los ingresos recurrentes del mes anterior que aún no existan en este mes,
   // generándolos como "pendiente" para cobrar.
@@ -208,11 +214,18 @@ export default function Rentals() {
         if (payload.tenantId && payload.commissionPercent != null) {
           await onRentalStatusChange({ ...payload, id: editId }, prevStatus);
         }
+        // Contrato de renta: al cobrarlo nacen las cuentas por pagar; al revertir, se eliminan
+        if (isContractIncome(payload)) {
+          await onContractIncomeStatusChange({ ...payload, id: editId }, prevStatus, contractFees);
+        }
       } else {
         const id = await db.rentals.add({ ...payload, createdAt: new Date().toISOString() });
         await logActivity(user.sub, user.username, 'income.create', `id=${id} kind=${payload.kind}`);
         if (payload.tenantId && payload.commissionPercent != null && payload.status === 'pagado') {
           await onRentalStatusChange({ ...payload, id }, 'pendiente');
+        }
+        if (isContractIncome(payload) && payload.status === 'pagado') {
+          await onContractIncomeStatusChange({ ...payload, id }, 'pendiente', contractFees);
         }
       }
       setOpen(false);
@@ -235,6 +248,10 @@ export default function Rentals() {
     // Si era renta de inquilino, eliminar también su pago al propietario
     if (row?.tenantId && row?.commissionPercent != null) {
       await removeOwnerPayment(row);
+    }
+    // Si era contrato de renta, eliminar sus cuentas por pagar
+    if (row && isContractIncome(row)) {
+      await removeContractPayables(row);
     }
     await logActivity(user.sub, user.username, 'income.delete', `id=${id}`);
     load();
@@ -318,6 +335,12 @@ export default function Rentals() {
         subtitle="Rentas y otros ingresos del periodo"
         actions={<>
           <HelpButton content={HELP.rentals} />
+          {canConfig && (
+            <button className="btn-secondary" title="Configurar desglose de contrato de renta"
+              onClick={() => { setFeesDraft(normalizeFees(contractFees)); setFeesErr(''); setFeesModal(true); }}>
+              <Settings size={16} /> Desglose contrato
+            </button>
+          )}
           <PeriodPicker />
           <button className="btn-primary" onClick={onAdd}><Plus size={16} /> Nuevo ingreso</button>
         </>}
@@ -386,10 +409,34 @@ export default function Rentals() {
             <div>
               <label className="label">Categoría</label>
               <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <option value={CONTRATO_CATEGORY}>Contrato de renta</option>
                 <option value="Por contrato">Por contrato</option>
                 <option value="Por administración de propiedad">Por administración de propiedad</option>
                 <option value="__otros__">Otros (especificar)</option>
               </select>
+            </div>
+          )}
+
+          {/* Preview del desglose del contrato de renta */}
+          {!isRenta && form.category === CONTRATO_CATEGORY && (
+            <div className="md:col-span-2 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 text-sm text-ink-700">
+              <p className="font-semibold text-ink-800 mb-1">Al marcar como <b>pagado</b> se generarán estas cuentas por pagar:</p>
+              <ul className="text-xs space-y-0.5">
+                {normalizeFees(contractFees).map((f) => (
+                  <li key={f.id} className="flex justify-between">
+                    <span>{f.label}</span>
+                    <span className="font-medium">{fmtCur(f.amount, form.currency === 'USD' ? 'USD' : 'DOP')}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex justify-between text-xs mt-1 pt-1 border-t border-brand-200">
+                <span>Total cuentas por pagar</span>
+                <span className="font-semibold">{fmtCur(feesTotal(contractFees), form.currency === 'USD' ? 'USD' : 'DOP')}</span>
+              </div>
+              <div className="flex justify-between text-sm mt-1 font-semibold text-emerald-700">
+                <span>Tu ingreso neto</span>
+                <span>{fmtCur((Number(form.amount) || 0) - feesTotal(contractFees), form.currency === 'USD' ? 'USD' : 'DOP')}</span>
+              </div>
             </div>
           )}
 
@@ -470,6 +517,58 @@ export default function Rentals() {
         footer={<button className="btn-primary" onClick={() => setNoteView({ open: false, text: '' })}>Cerrar</button>}
       >
         <p className="text-sm text-ink-700 whitespace-pre-wrap">{noteView.text}</p>
+      </Modal>
+
+      {/* Configuración del desglose de contrato de renta */}
+      <Modal
+        open={feesModal} onClose={() => setFeesModal(false)}
+        title="Desglose de contrato de renta" size="md"
+        footer={<>
+          <button className="btn-secondary" onClick={() => setFeesModal(false)}>Cancelar</button>
+          <button className="btn-primary" onClick={async () => {
+            setFeesErr('');
+            try {
+              await setContractFees(feesDraft, user);
+              setFeesModal(false);
+            } catch (ex) {
+              setFeesErr(ex.message || 'Error al guardar');
+            }
+          }}>Guardar</button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-ink-600">
+            Conceptos (cuentas por pagar) que se generan al cobrar un ingreso de <b>Contrato de renta</b>.
+            Tu ingreso real es el monto del contrato menos la suma de estos conceptos.
+          </p>
+          <div className="space-y-2">
+            {feesDraft.map((f, i) => (
+              <div key={f.id} className="flex items-center gap-2">
+                <input
+                  className="input flex-1" value={f.label} placeholder="Concepto"
+                  onChange={(e) => setFeesDraft(feesDraft.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                />
+                <input
+                  type="number" step="0.01" min="0" className="input w-28 text-right" value={f.amount}
+                  onChange={(e) => setFeesDraft(feesDraft.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                />
+                <button className="btn-ghost p-1.5 text-red-600" title="Quitar"
+                  onClick={() => setFeesDraft(feesDraft.filter((_, j) => j !== i))}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button className="btn-secondary text-xs py-1.5"
+            onClick={() => setFeesDraft([...feesDraft, { id: `f_${Date.now()}`, label: '', amount: 0 }])}>
+            <Plus size={14} /> Añadir concepto
+          </button>
+          <div className="flex justify-between text-sm border-t border-ink-100 pt-2">
+            <span className="text-ink-600">Total cuentas por pagar</span>
+            <span className="font-semibold text-ink-900">{fmtCur(feesTotal(feesDraft), 'DOP')}</span>
+          </div>
+          {feesErr && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{feesErr}</div>}
+        </div>
       </Modal>
 
       <ConfirmModal
