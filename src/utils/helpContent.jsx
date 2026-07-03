@@ -196,6 +196,11 @@ const HELP = {
         <p>El pago al propietario <b>solo se genera cuando marcas la renta como PAGADA</b> (ya cobraste, ahora le debes al dueño). Aparece en <b>Gastos Mensuales</b> con el nombre del campo "Propietario" de la propiedad. Se marca pagado manualmente o se puede eliminar. Si revierte la renta a pendiente, el pago se elimina. Así el balance neto refleja solo la comisión.</p>
         <p>Solo se genera dentro de la ventana del contrato (entre inicio y fin de contrato).</p>
       </Section>
+      <Section title="Bono de administración por inquilino">
+        <p>Cada inquilino puede tener un <b>administrador/responsable</b> asignado (un usuario del sistema, ej. un colaborador con rol Operativo). Ese colaborador recibe un bono fijo mensual por cada inquilino que administra.</p>
+        <Formula>Bono del colaborador = RD$ por inquilino × cantidad de inquilinos asignados</Formula>
+        <p>Se genera automáticamente en <b>Gastos Mensuales</b> como un solo gasto pendiente por colaborador (ej. "Bono administración — Yuleimi (3 inquilinos administrados)"). Se recalcula solo si cambia el número de inquilinos asignados, <b>mientras siga pendiente</b>; una vez pagado, ese mes queda fijo como historial. El monto por inquilino se configura con el botón <b>"Bono administración"</b> (solo Admin/SuperAdmin).</p>
+      </Section>
       <Section title="Alertas de vencimiento">
         <p>Los inquilinos cuyo <b>Fin de contrato</b> cae dentro de los próximos 30 días se marcan en amarillo y aparecen en el Dashboard.</p>
       </Section>

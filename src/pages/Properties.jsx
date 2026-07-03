@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Building2, Users, UserCheck, Power } from 'lucide-react';
+import { Plus, Edit2, Trash2, Building2, Users, UserCheck, Power, Settings, UserCog } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import DataTable from '../components/DataTable.jsx';
 import Modal, { ConfirmModal } from '../components/Modal.jsx';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
-import { db, logActivity } from '../db/database.js';
+import { db, logActivity, rpcListUsers } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
@@ -18,17 +18,20 @@ const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: ''
 const tenantEmpty = () => ({
   name: '', phone: '', email: '', identification: '', propertyId: '',
   contractStart: todayISO(), contractEnd: '', monthlyRent: '', notes: '',
-  currency: 'DOP', exchangeRate: '', commissionPercent: '', collectionDay: 1
+  currency: 'DOP', exchangeRate: '', commissionPercent: '', collectionDay: 1,
+  managerId: ''
 });
 const agentEmpty = () => ({ name: '', phone: '', email: '', commission: '', notes: '', active: 1 });
 
 export default function Properties() {
-  const { user } = useAuth();
-  const { usdToDop } = useSettings();
+  const { user, token, hasRole } = useAuth();
+  const canConfig = hasRole('SuperAdmin', 'Admin');
+  const { usdToDop, adminBonusPerTenant, setAdminBonusPerTenant } = useSettings();
   const [tab, setTab] = useState('properties');
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [staff, setStaff] = useState([]); // usuarios del sistema, para asignar administrador
 
   const [pOpen, setPOpen] = useState(false);
   const [pForm, setPForm] = useState(propEmpty());
@@ -46,12 +49,17 @@ export default function Properties() {
   const [tErr, setTErr] = useState('');
   const [tSaving, setTSaving] = useState(false);
 
+  const [bonusModal, setBonusModal] = useState(false);
+  const [bonusInput, setBonusInput] = useState('');
+  const [bonusErr, setBonusErr] = useState('');
+
   const load = async () => {
     setProperties(await db.properties.toArray());
     setTenants(await db.tenants.toArray());
     setAgents(await db.agents.toArray());
+    try { setStaff(await rpcListUsers(token)); } catch { /* sesión aún cargando */ }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-line */ }, []);
   useRealtimeTable(['properties', 'tenants', 'agents'], () => load());
 
   const saveProp = async (e) => {
@@ -75,6 +83,7 @@ export default function Properties() {
   const saveTenant = async (e) => {
     e.preventDefault();
     const property = properties.find((p) => p.id === Number(tForm.propertyId));
+    const manager = staff.find((s) => s.id === Number(tForm.managerId));
     const currency = tForm.currency === 'USD' ? 'USD' : 'DOP';
     const exchangeRate = currency === 'USD' ? (Number(tForm.exchangeRate) || usdToDop) : null;
     const payload = {
@@ -88,6 +97,8 @@ export default function Properties() {
       currency, exchangeRate,
       commissionPercent: tForm.commissionPercent === '' || tForm.commissionPercent == null ? null : Math.min(100, Math.max(0, Number(tForm.commissionPercent) || 0)),
       collectionDay: Math.min(31, Math.max(1, Number(tForm.collectionDay) || 1)),
+      managerId: tForm.managerId ? Number(tForm.managerId) : null,
+      managerName: manager?.fullName || manager?.username || '',
       notes: tForm.notes
     };
     setTErr(''); setTSaving(true);
@@ -186,6 +197,9 @@ export default function Properties() {
         : <span className="badge-slate" title="Sin % configurado: no genera ingreso automático">—</span>
     },
     { key: 'collectionDay', label: 'Día cobro', render: (r) => r.collectionDay ? `Día ${r.collectionDay}` : '—' },
+    { key: 'managerName', label: 'Administrador', render: (r) =>
+      r.managerName ? <span className="badge-slate">{r.managerName}</span> : <span className="text-ink-300">—</span>
+    },
     { key: 'contractStart', label: 'Inicio', render: (r) => fmtDate(r.contractStart) },
     { key: 'contractEnd', label: 'Vence', render: (r) => {
       if (!r.contractEnd) return '—';
@@ -205,7 +219,8 @@ export default function Properties() {
             exchangeRate: r.exchangeRate ?? '',
             commissionPercent: r.commissionPercent ?? '',
             collectionDay: r.collectionDay ?? 1,
-            contractEnd: r.contractEnd || ''
+            contractEnd: r.contractEnd || '',
+            managerId: r.managerId ?? ''
           });
           setTOpen(true);
         }}><Edit2 size={14} /></button>
@@ -260,9 +275,17 @@ export default function Properties() {
             </button>
           )}
           {tab === 'tenants' && (
-            <button className="btn-primary" onClick={() => { setTEdit(null); setTErr(''); setTForm(tenantEmpty()); setTOpen(true); }}>
-              <Plus size={16} /> Nuevo inquilino
-            </button>
+            <div className="flex gap-2">
+              {canConfig && (
+                <button className="btn-secondary" title="Configurar bono de administración por inquilino"
+                  onClick={() => { setBonusInput(String(adminBonusPerTenant)); setBonusErr(''); setBonusModal(true); }}>
+                  <Settings size={16} /> Bono administración
+                </button>
+              )}
+              <button className="btn-primary" onClick={() => { setTEdit(null); setTErr(''); setTForm(tenantEmpty()); setTOpen(true); }}>
+                <Plus size={16} /> Nuevo inquilino
+              </button>
+            </div>
           )}
           {tab === 'agents' && (
             <button className="btn-primary" onClick={() => { setAEdit(null); setAForm(agentEmpty()); setAOpen(true); }}>
@@ -356,6 +379,20 @@ export default function Properties() {
               {' '}({tForm.commissionPercent}% de la renta) el día {tForm.collectionDay || 1}.
             </div>
           )}
+          <div className="md:col-span-2">
+            <label className="label flex items-center gap-1.5"><UserCog size={14} className="text-ink-500" /> Administrador / responsable</label>
+            <select className="input" value={tForm.managerId} onChange={(e) => setTForm({ ...tForm, managerId: e.target.value })}>
+              <option value="">— sin asignar —</option>
+              {staff.filter((s) => !s.blocked).map((s) => (
+                <option key={s.id} value={s.id}>{s.fullName || s.username} ({s.role})</option>
+              ))}
+            </select>
+            {tForm.managerId && (
+              <p className="text-xs text-ink-500 mt-1">
+                Genera un bono mensual de {fmtCur(adminBonusPerTenant, 'DOP')} por inquilino administrado en Gastos Mensuales, a nombre de este colaborador.
+              </p>
+            )}
+          </div>
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={tForm.notes} onChange={(e) => setTForm({ ...tForm, notes: e.target.value })} /></div>
         </form>
       </Modal>
@@ -382,6 +419,37 @@ export default function Properties() {
           </div>
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={aForm.notes} onChange={(e) => setAForm({ ...aForm, notes: e.target.value })} /></div>
         </form>
+      </Modal>
+
+      <Modal
+        open={bonusModal} onClose={() => setBonusModal(false)}
+        title="Bono de administración por inquilino" size="sm"
+        footer={<>
+          <button className="btn-secondary" onClick={() => setBonusModal(false)}>Cancelar</button>
+          <button className="btn-primary" onClick={async () => {
+            setBonusErr('');
+            try {
+              await setAdminBonusPerTenant(bonusInput, user);
+              setBonusModal(false);
+            } catch (ex) {
+              setBonusErr(ex.message || 'Error al guardar');
+            }
+          }}>Guardar</button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-ink-600">
+            Monto fijo (RD$) que se paga mensualmente a cada colaborador por <b>cada inquilino que administra</b>.
+            Se genera automáticamente en <b>Gastos Mensuales</b> como un gasto pendiente por colaborador
+            (ej. "Bono administración — Yuleimi (3 inquilinos administrados)"). Si el colaborador administra
+            menos inquilinos, el monto baja solo; si administra más, sube. Una vez pagado, ese mes no se vuelve a tocar.
+          </p>
+          <div>
+            <label className="label">Monto por inquilino (RD$)</label>
+            <input type="number" step="0.01" min="0" className="input" value={bonusInput} onChange={(e) => setBonusInput(e.target.value)} autoFocus />
+          </div>
+          {bonusErr && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{bonusErr}</div>}
+        </div>
       </Modal>
 
       <ConfirmModal
