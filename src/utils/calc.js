@@ -65,10 +65,13 @@ export async function monthlyTotals(year, month) {
 
   for (const c of ['DOP', 'USD']) {
     cur[c].totalIncome = cur[c].rentalsPaid + cur[c].rentalsPartial + cur[c].salesAmount;
-    cur[c].surplus = cur[c].totalIncome - cur[c].expensesAll;
+    // Balance real: solo cuenta lo que YA se pagó. Un gasto pendiente (ej.
+    // recién generado a inicio de mes) no debe descuadrar el balance hasta
+    // que efectivamente se pague.
+    cur[c].surplus = cur[c].totalIncome - cur[c].expensesPaid;
   }
   base.totalIncome = base.rentalsPaid + base.rentalsPartial + base.salesAmount;
-  base.surplus = base.totalIncome - base.expensesAll;
+  base.surplus = base.totalIncome - base.expensesPaid;
 
   // Campos planos = consolidado a DOP (compatibilidad con Distribución y Bonificaciones)
   return {
@@ -84,9 +87,11 @@ export async function yearMonthlySeries(year) {
     const t = await monthlyTotals(year, m);
     result.push({
       month: m,
-      dop: { income: t.cur.DOP.totalIncome, expenses: t.cur.DOP.expensesAll, surplus: t.cur.DOP.surplus },
-      usd: { income: t.cur.USD.totalIncome, expenses: t.cur.USD.expensesAll, surplus: t.cur.USD.surplus },
-      base: { income: t.totalIncome, expenses: t.expensesAll, surplus: t.surplus }
+      // "expenses" en la gráfica = gastos PAGADOS, para que coincida con
+      // el excedente (Ingresos - Gastos pagados = Excedente).
+      dop: { income: t.cur.DOP.totalIncome, expenses: t.cur.DOP.expensesPaid, surplus: t.cur.DOP.surplus },
+      usd: { income: t.cur.USD.totalIncome, expenses: t.cur.USD.expensesPaid, surplus: t.cur.USD.surplus },
+      base: { income: t.totalIncome, expenses: t.expensesPaid, surplus: t.surplus }
     });
   }
   return result;

@@ -27,12 +27,13 @@ const HELP = {
         <Formula>Rentas pagadas + Rentas parciales (lo cobrado) + Ventas del mes</Formula>
         <p>Las rentas <b>pendientes</b> NO se suman al ingreso. Las parciales solo aportan la parte efectivamente cobrada.</p>
       </Section>
-      <Section title="Gastos totales">
-        <Formula>Suma de "Monto mensual" de TODOS los gastos del mes (pagados + pendientes)</Formula>
+      <Section title="Gastos pagados">
+        <Formula>Suma de "Monto mensual" de los gastos con estado PAGADO únicamente</Formula>
+        <p>Los gastos <b>pendientes</b> no afectan el balance todavía — por eso a inicio de mes, cuando se auto-generan gastos recurrentes o pagos a propietario/contrato, el balance no se descuadra. El sub-texto "Comprometido total" muestra cuánto suma incluyendo lo pendiente, solo como referencia.</p>
       </Section>
       <Section title="Balance neto / Excedente">
-        <Formula>Ingresos totales − Gastos totales</Formula>
-        <p>Si es negativo, el mes es <b>deficitario</b> y se muestra una alerta roja. En ese caso no hay distribución ni bonificaciones.</p>
+        <Formula>Ingresos totales − Gastos PAGADOS</Formula>
+        <p>Si es negativo, el mes es <b>deficitario</b> y se muestra una alerta roja. En ese caso no hay distribución ni bonificaciones. A medida que vas pagando gastos pendientes, el balance baja reflejando la realidad de caja.</p>
       </Section>
       <Section title="Comisiones">
         <p>Suma del campo <b>Comisión</b> de las ventas registradas en el mes.</p>

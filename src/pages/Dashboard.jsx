@@ -102,8 +102,10 @@ export default function Dashboard() {
         <>
           <StatCard icon={TrendingUp} label="Ingresos RD$" value={fmtCur(dop.totalIncome, 'DOP')} color="bg-emerald-500" />
           <StatCard icon={TrendingUp} label="Ingresos US$" value={fmtCur(usd.totalIncome, 'USD')} color="bg-emerald-600" />
-          <StatCard icon={TrendingDown} label="Gastos RD$" value={fmtCur(dop.expensesAll, 'DOP')} color="bg-red-500" />
-          <StatCard icon={TrendingDown} label="Gastos US$" value={fmtCur(usd.expensesAll, 'USD')} color="bg-red-600" />
+          <StatCard icon={TrendingDown} label="Gastos pagados RD$" value={fmtCur(dop.expensesPaid, 'DOP')} color="bg-red-500"
+            sub={dop.expensesAll > dop.expensesPaid ? `Pendiente: ${fmtCur(dop.expensesAll - dop.expensesPaid, 'DOP')}` : undefined} />
+          <StatCard icon={TrendingDown} label="Gastos pagados US$" value={fmtCur(usd.expensesPaid, 'USD')} color="bg-red-600"
+            sub={usd.expensesAll > usd.expensesPaid ? `Pendiente: ${fmtCur(usd.expensesAll - usd.expensesPaid, 'USD')}` : undefined} />
           <StatCard icon={Wallet} label="Balance RD$" value={fmtCur(dop.surplus, 'DOP')} color={negativeDOP ? 'bg-red-500' : 'bg-ink-900'} />
           <StatCard icon={Wallet} label="Balance US$" value={fmtCur(usd.surplus, 'USD')} color={negativeUSD ? 'bg-red-500' : 'bg-ink-800'} />
         </>
@@ -116,7 +118,8 @@ export default function Dashboard() {
     return (
       <>
         <StatCard icon={TrendingUp} label={`Ingresos totales${suffix}`} value={fmtCur(d.totalIncome, ccy)} color="bg-emerald-500" sub={`Rentas: ${fmtCur((d.rentalsPaid || 0) + (d.rentalsPartial || 0), ccy)}`} />
-        <StatCard icon={TrendingDown} label={`Gastos totales${suffix}`} value={fmtCur(d.expensesAll, ccy)} color="bg-red-500" sub={`Pagados: ${fmtCur(d.expensesPaid || 0, ccy)}`} />
+        <StatCard icon={TrendingDown} label={`Gastos pagados${suffix}`} value={fmtCur(d.expensesPaid || 0, ccy)} color="bg-red-500"
+          sub={(d.expensesAll || 0) > (d.expensesPaid || 0) ? `Comprometido total: ${fmtCur(d.expensesAll, ccy)}` : 'Sin pendientes'} />
         <StatCard icon={Wallet} label={`Balance neto${suffix}`} value={fmtCur(d.surplus, ccy)} color={neg ? 'bg-red-500' : 'bg-ink-900'} sub={neg ? 'Déficit del mes' : 'Excedente disponible'} />
       </>
     );
