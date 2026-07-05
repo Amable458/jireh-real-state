@@ -1,6 +1,15 @@
 import { fmtCur, recCurrency } from './currency.js';
 import { fmtDate, monthName } from './format.js';
 
+// La fuente estándar de jsPDF (WinAnsi) no soporta ciertos caracteres
+// Unicode. Los reemplazamos por equivalentes seguros.
+const pdfSafe = (s) => String(s ?? '')
+  .replace(/[−–]/g, '-')   // signo menos / en-dash → guión normal
+  .replace(/✓/g, '')       // checkmark
+  .replace(/[↻→]/g, '-')   // flechas
+  .replace(/[""]/g, '"')
+  .replace(/['']/g, "'");
+
 // Genera y descarga un recibo PDF para un ingreso pagado.
 // jsPDF se importa dinámicamente para no engordar el chunk de Ingresos.
 export async function generateReceiptPDF(income) {
@@ -42,7 +51,7 @@ export async function generateReceiptPDF(income) {
     doc.text(label, 10, y);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(60, 60, 60);
-    doc.text(String(value || '—'), 55, y);
+    doc.text(pdfSafe(value || '-'), 55, y);
     y += 7;
   };
 
@@ -53,8 +62,7 @@ export async function generateReceiptPDF(income) {
   row('Fecha de pago:', fmtDate(income.date));
   if (ccy === 'USD' && income.exchangeRate) row('Tasa aplicada:', `1 US$ = RD$${income.exchangeRate}`);
   if (income.notes) {
-    const clean = String(income.notes).slice(0, 120);
-    row('Nota:', clean);
+    row('Nota:', pdfSafe(income.notes).slice(0, 90));
   }
 
   // Monto destacado
@@ -68,11 +76,13 @@ export async function generateReceiptPDF(income) {
   doc.setFontSize(14);
   doc.text(fmtCur(income.amount, ccy), W - 14, y + 3, { align: 'right' });
 
-  // Estado
+  // Estado (sin caracteres especiales: la fuente estándar de jsPDF no
+  // soporta ✓ y lo renderiza como basura)
   y += 20;
-  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
   doc.setTextColor(5, 150, 105);
-  doc.text('✓ PAGADO', 10, y);
+  doc.text('ESTADO: PAGADO', 10, y);
 
   // Firma
   y += 22;
