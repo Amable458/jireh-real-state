@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, CheckCircle2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -32,6 +32,8 @@ export default function Expenses() {
   const [editId, setEditId] = useState(null);
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [curFilter, setCurFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all'); // all | pendiente | pagado
+  const [payConfirm, setPayConfirm] = useState({ open: false, row: null });
 
   const ensureRecurring = async () => {
     const current = await db.expenses.where({ year, month }).toArray();
@@ -104,9 +106,23 @@ export default function Expenses() {
     load();
   };
 
+  // Marca un gasto como pagado en un click
+  const quickPay = async (row) => {
+    try {
+      await db.expenses.update(row.id, { status: 'pagado' });
+      await logActivity(user.sub, user.username, 'expense.paid', `id=${row.id}`);
+      await load();
+    } catch (ex) {
+      alert(ex.message || 'Error al marcar como pagado');
+    }
+  };
+
   const visibleRows = useMemo(() =>
-    curFilter === 'all' ? rows : rows.filter((r) => recCurrency(r) === curFilter),
-    [rows, curFilter]
+    rows.filter((r) =>
+      (curFilter === 'all' || recCurrency(r) === curFilter) &&
+      (statusFilter === 'all' || r.status === statusFilter)
+    ),
+    [rows, curFilter, statusFilter]
   );
 
   const totals = useMemo(() => {
@@ -139,8 +155,12 @@ export default function Expenses() {
     { key: 'recurring', label: 'Recurrente', render: (r) => r.recurring ? <span className="badge-info">Sí</span> : <span className="badge-slate">No</span> },
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
-        <button onClick={() => onEdit(r)} className="btn-ghost p-1.5"><Edit2 size={14} /></button>
-        <button onClick={() => setConfirm({ open: true, id: r.id })} className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
+        {r.status !== 'pagado' && (
+          <button onClick={() => setPayConfirm({ open: true, row: r })} title="Marcar como pagado"
+            className="btn-ghost p-1.5 text-emerald-600"><CheckCircle2 size={14} /></button>
+        )}
+        <button onClick={() => onEdit(r)} title="Editar" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
+        <button onClick={() => setConfirm({ open: true, id: r.id })} title="Eliminar" className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
       </div>
     )}
   ];
@@ -173,13 +193,23 @@ export default function Expenses() {
       </div>
 
       <div className="card card-body">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-sm text-ink-500">Moneda:</span>
-          <select className="input py-1.5 w-40" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
-            <option value="all">Todas</option>
-            <option value="DOP">Solo RD$</option>
-            <option value="USD">Solo US$</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-ink-500">Moneda:</span>
+            <select className="input py-1.5 w-36" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
+              <option value="all">Todas</option>
+              <option value="DOP">Solo RD$</option>
+              <option value="USD">Solo US$</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-ink-500">Estado:</span>
+            <select className="input py-1.5 w-36" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">Todos</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="pagado">Pagado</option>
+            </select>
+          </div>
         </div>
         <DataTable columns={columns} rows={visibleRows} />
       </div>
@@ -238,6 +268,16 @@ export default function Expenses() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmModal
+        open={payConfirm.open}
+        onClose={() => setPayConfirm({ open: false, row: null })}
+        onConfirm={() => quickPay(payConfirm.row)}
+        title="Marcar como pagado"
+        message={payConfirm.row
+          ? `¿Confirmar el pago de ${fmtCur(payConfirm.row.monthly, recCurrency(payConfirm.row))} — ${payConfirm.row.description}?`
+          : ''}
+      />
 
       <ConfirmModal
         open={confirm.open}

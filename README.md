@@ -15,12 +15,19 @@ Datos centralizados, sincronizados entre dispositivos, sin instalación.
    - Region: `East US` o `South America (São Paulo)`.
 3. Espera ~2 minutos a que provisione.
 
-### 2. Ejecutar el schema
+### 2. Ejecutar el script maestro de base de datos
 
 1. En el dashboard del proyecto → menú izquierdo **SQL Editor** → **New query**.
-2. Copia y pega el contenido completo de [`supabase/schema.sql`](./supabase/schema.sql).
-3. Click **Run** (esquina inferior derecha).
-4. Verifica en **Table Editor** que aparecen 11 tablas: users, agents, properties, tenants, rentals, sales, expenses, distributionConfig, distributions, activityLog, settings.
+2. Copia y pega el contenido completo de [`supabase/master.sql`](./supabase/master.sql) —
+   un ÚNICO archivo idempotente con todo el esquema, seguridad y migraciones. Se puede
+   re-ejecutar en cualquier momento para poner la BD al día sin dañar datos.
+3. Click **Run** (esquina inferior derecha). Al final verás el NOTICE
+   `✓✓✓ MASTER.SQL COMPLETO`.
+4. Verifica en **Table Editor** que aparecen las tablas: users, agents, properties, tenants,
+   rentals, sales, expenses, distributionConfig, activityLog, settings, sessions, login_attempts.
+
+> Los archivos individuales (`schema.sql`, `security.sql`, `migration_*.sql`) se conservan como
+> historial, pero `master.sql` los contiene todos.
 
 ### 3. Obtener las credenciales
 

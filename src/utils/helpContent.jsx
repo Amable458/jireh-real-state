@@ -75,6 +75,13 @@ const HELP = {
         <Formula>Ingreso real = Monto del contrato − suma de cuentas por pagar</Formula>
         <p>Si reviertes el ingreso a pendiente o lo eliminas, las cuentas por pagar se borran. El desglose y sus montos se editan con el botón <b>"Desglose contrato"</b> (solo Admin/SuperAdmin).</p>
       </Section>
+      <Section title="Acciones rápidas">
+        <ul className="list-disc list-inside text-xs space-y-1">
+          <li><b>✓ verde:</b> marca el ingreso como pagado en un click (con confirmación). Dispara automáticamente el pago a propietario o las cuentas por pagar de contrato si aplica.</li>
+          <li><b>Icono de descarga:</b> en ingresos pagados, genera un <b>recibo PDF</b> con los datos del cobro, listo para enviar al inquilino.</li>
+          <li><b>Filtros:</b> combine Moneda y Estado para ver de un vistazo lo pendiente por cobrar.</li>
+        </ul>
+      </Section>
       <Section title="Categoría y notas">
         <p>La columna <b>Categoría</b> muestra el tipo de cada ingreso. La columna <b>Notas</b> muestra un ícono: si tiene comentarios, es clickeable para verlos; si no, aparece atenuado.</p>
       </Section>
@@ -133,6 +140,9 @@ const HELP = {
       <Section title="Cómo afecta al excedente">
         <Formula>Total mensual = suma de TODOS los gastos del mes (sin importar estado)</Formula>
         <p>Esto significa que un gasto registrado como "pendiente" ya impacta el cálculo del excedente.</p>
+      </Section>
+      <Section title="Acciones rápidas">
+        <p>El botón <b>✓ verde</b> marca un gasto como pagado en un click (con confirmación). Los filtros de <b>Moneda</b> y <b>Estado</b> permiten ver solo lo pendiente por pagar.</p>
       </Section>
       <Note>El campo "Pendiente" en tarjetas resumen muestra solo lo que aún no se ha pagado, pero contablemente todo el gasto ya está reservado.</Note>
     </>

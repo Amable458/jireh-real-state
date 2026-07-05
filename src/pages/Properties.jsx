@@ -82,6 +82,11 @@ export default function Properties() {
 
   const saveTenant = async (e) => {
     e.preventDefault();
+    // Validación de fechas: el fin de contrato debe ser posterior al inicio
+    if (tForm.contractStart && tForm.contractEnd && tForm.contractEnd <= tForm.contractStart) {
+      setTErr('La fecha de fin de contrato debe ser posterior a la de inicio.');
+      return;
+    }
     const property = properties.find((p) => p.id === Number(tForm.propertyId));
     const manager = staff.find((s) => s.id === Number(tForm.managerId));
     const currency = tForm.currency === 'USD' ? 'USD' : 'DOP';
@@ -203,6 +208,11 @@ export default function Properties() {
     { key: 'contractStart', label: 'Inicio', render: (r) => fmtDate(r.contractStart) },
     { key: 'contractEnd', label: 'Vence', render: (r) => {
       if (!r.contractEnd) return '—';
+      // Fechas inválidas (fin ≤ inicio): dato erróneo que excluye al inquilino
+      // de la generación automática — resaltarlo para corregirlo.
+      if (r.contractStart && r.contractEnd <= r.contractStart) {
+        return <span className="badge-danger" title="Fin de contrato anterior o igual al inicio — corrija las fechas">⚠ {fmtDate(r.contractEnd)}</span>;
+      }
       const d = new Date(r.contractEnd);
       const expiring = d >= today && d <= in30;
       return <span className={expiring ? 'badge-warning' : ''}>{fmtDate(r.contractEnd)}</span>;

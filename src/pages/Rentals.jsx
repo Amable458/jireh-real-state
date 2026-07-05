@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, MessageSquare, MessageSquareText, Repeat, Settings } from 'lucide-react';
+import { Plus, Edit2, Trash2, MessageSquare, MessageSquareText, Repeat, Settings, CheckCircle2, FileDown } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -16,6 +16,7 @@ import { fmtCur, recCurrency } from '../utils/currency.js';
 import { ensureTenantCharges, onRentalStatusChange, removeOwnerPayment } from '../utils/tenantCharges.js';
 import { onContractIncomeStatusChange, removeContractPayables, isContractIncome } from '../utils/contractCharges.js';
 import { CONTRATO_CATEGORY, normalizeFees, feesTotal } from '../utils/contractFees.js';
+import { generateReceiptPDF } from '../utils/receipt.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const STATUS = [
@@ -56,6 +57,8 @@ export default function Rentals() {
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [noteView, setNoteView] = useState({ open: false, text: '' });
   const [curFilter, setCurFilter] = useState('all'); // all | DOP | USD
+  const [statusFilter, setStatusFilter] = useState('all'); // all | pendiente | parcial | pagado
+  const [payConfirm, setPayConfirm] = useState({ open: false, row: null });
   const [saveErr, setSaveErr] = useState('');
   const [saving, setSaving] = useState(false);
   const { usdToDop, contractFees, setContractFees } = useSettings();
@@ -257,14 +260,36 @@ export default function Rentals() {
     load();
   };
 
+  // Marca un ingreso como pagado en un click, disparando los mismos
+  // side-effects que el formulario (pago a propietario / cuentas de contrato).
+  const quickPay = async (row) => {
+    try {
+      await db.rentals.update(row.id, { status: 'pagado' });
+      await logActivity(user.sub, user.username, 'income.paid', `id=${row.id}`);
+      const updated = { ...row, status: 'pagado' };
+      if (row.tenantId && row.commissionPercent != null) {
+        await onRentalStatusChange(updated, row.status);
+      }
+      if (isContractIncome(row)) {
+        await onContractIncomeStatusChange(updated, row.status, contractFees);
+      }
+      await load();
+    } catch (ex) {
+      alert(ex.message || 'Error al marcar como pagado');
+    }
+  };
+
   const filteredTenants = useMemo(() =>
     form.propertyId ? tenants.filter((t) => !t.propertyId || t.propertyId === Number(form.propertyId)) : tenants,
     [tenants, form.propertyId]
   );
 
   const visibleRows = useMemo(() =>
-    curFilter === 'all' ? rows : rows.filter((r) => recCurrency(r) === curFilter),
-    [rows, curFilter]
+    rows.filter((r) =>
+      (curFilter === 'all' || recCurrency(r) === curFilter) &&
+      (statusFilter === 'all' || r.status === statusFilter)
+    ),
+    [rows, curFilter, statusFilter]
   );
 
   // Totales por moneda
@@ -320,8 +345,16 @@ export default function Rentals() {
     }},
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
-        <button onClick={() => onEdit(r)} className="btn-ghost p-1.5"><Edit2 size={14} /></button>
-        <button onClick={() => setConfirm({ open: true, id: r.id })} className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
+        {r.status !== 'pagado' && (
+          <button onClick={() => setPayConfirm({ open: true, row: r })} title="Marcar como pagado"
+            className="btn-ghost p-1.5 text-emerald-600"><CheckCircle2 size={14} /></button>
+        )}
+        {r.status === 'pagado' && (
+          <button onClick={() => generateReceiptPDF(r)} title="Descargar recibo PDF"
+            className="btn-ghost p-1.5 text-ink-700"><FileDown size={14} /></button>
+        )}
+        <button onClick={() => onEdit(r)} title="Editar" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
+        <button onClick={() => setConfirm({ open: true, id: r.id })} title="Eliminar" className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
       </div>
     )}
   ];
@@ -363,13 +396,24 @@ export default function Rentals() {
       </div>
 
       <div className="card card-body">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-sm text-ink-500">Moneda:</span>
-          <select className="input py-1.5 w-40" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
-            <option value="all">Todas</option>
-            <option value="DOP">Solo RD$</option>
-            <option value="USD">Solo US$</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-ink-500">Moneda:</span>
+            <select className="input py-1.5 w-36" value={curFilter} onChange={(e) => setCurFilter(e.target.value)}>
+              <option value="all">Todas</option>
+              <option value="DOP">Solo RD$</option>
+              <option value="USD">Solo US$</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-ink-500">Estado:</span>
+            <select className="input py-1.5 w-36" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">Todos</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="parcial">Parcial</option>
+              <option value="pagado">Pagado</option>
+            </select>
+          </div>
         </div>
         <DataTable columns={columns} rows={visibleRows} />
       </div>
@@ -570,6 +614,16 @@ export default function Rentals() {
           {feesErr && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{feesErr}</div>}
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={payConfirm.open}
+        onClose={() => setPayConfirm({ open: false, row: null })}
+        onConfirm={() => quickPay(payConfirm.row)}
+        title="Marcar como pagado"
+        message={payConfirm.row
+          ? `¿Confirmar el cobro de ${fmtCur(payConfirm.row.amount, recCurrency(payConfirm.row))} de ${payConfirm.row.tenantName || payConfirm.row.category}?`
+          : ''}
+      />
 
       <ConfirmModal
         open={confirm.open}
