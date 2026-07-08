@@ -39,6 +39,8 @@ export default function Sales() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty());
   const [editId, setEditId] = useState(null);
+  const [saveErr, setSaveErr] = useState('');
+  const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [curFilter, setCurFilter] = useState('all');
 
@@ -54,9 +56,10 @@ export default function Sales() {
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
   useRealtimeTable(['sales', 'properties', 'agents', 'expenses'], () => load());
 
-  const onAdd = () => { setEditId(null); setForm(empty()); setOpen(true); };
+  const onAdd = () => { setEditId(null); setSaveErr(''); setForm(empty()); setOpen(true); };
   const onEdit = (r) => {
     setEditId(r.id);
+    setSaveErr('');
     // % de comisión: usa el guardado o lo deriva del monto/precio (ventas viejas)
     const pct = r.commissionPercent != null && r.commissionPercent !== ''
       ? r.commissionPercent
@@ -94,17 +97,29 @@ export default function Sales() {
       colegas,
       notes: form.notes || ''
     };
-    let saleId = editId;
-    if (editId) {
-      await db.sales.update(editId, payload);
-      await logActivity(user.sub, user.username, 'sale.update', `id=${editId}`);
-    } else {
-      saleId = await db.sales.add({ ...payload, createdAt: new Date().toISOString() });
-      await logActivity(user.sub, user.username, 'sale.create', `id=${saleId}`);
+    setSaveErr(''); setSaving(true);
+    try {
+      let saleId = editId;
+      if (editId) {
+        await db.sales.update(editId, payload);
+        await logActivity(user.sub, user.username, 'sale.update', `id=${editId}`);
+      } else {
+        saleId = await db.sales.add({ ...payload, createdAt: new Date().toISOString() });
+        await logActivity(user.sub, user.username, 'sale.create', `id=${saleId}`);
+      }
+      // Genera/actualiza las cuentas por pagar a colegas
+      await syncSaleColegaPayables({ ...payload, id: saleId });
+      setOpen(false);
+      await load();
+    } catch (ex) {
+      const msg = ex?.message || 'Error al guardar';
+      const hint = /column|commissionPercent|colegas|schema cache/i.test(msg)
+        ? ' — Ejecute la migración supabase/migration_venta_comision_pct.sql (y migration_venta_colegas.sql) en Supabase.'
+        : '';
+      setSaveErr(msg + hint);
+    } finally {
+      setSaving(false);
     }
-    // Genera/actualiza las cuentas por pagar a colegas
-    await syncSaleColegaPayables({ ...payload, id: saleId });
-    setOpen(false); load();
   };
 
   const remove = async (id) => {
@@ -212,11 +227,16 @@ export default function Sales() {
         title={editId ? 'Editar venta' : 'Nueva venta'}
         size="lg"
         footer={<>
-          <button className="btn-secondary" onClick={() => setOpen(false)}>Cancelar</button>
-          <button className="btn-primary" onClick={save}>Guardar</button>
+          <button className="btn-secondary" onClick={() => setOpen(false)} disabled={saving}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
         </>}
       >
         <form onSubmit={save} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {saveErr && (
+            <div className="md:col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {saveErr}
+            </div>
+          )}
           <div>
             <label className="label">Fecha de cierre</label>
             <input type="date" className="input" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />

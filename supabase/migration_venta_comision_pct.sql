@@ -14,5 +14,5 @@ set "commissionPercent" = round(commission / price * 100.0, 4)
 where "commissionPercent" is null and commission is not null and price is not null and price > 0;
 
 do $$ begin
-  raise notice '✓ Migración de comisión % en ventas aplicada: sales.commissionPercent + backfill.';
+  raise notice '✓ Migración de comisión %% en ventas aplicada: sales.commissionPercent + backfill.';
 end $$;
