@@ -115,8 +115,9 @@ const HELP = {
       <Section title="Campos clave">
         <ul className="list-disc list-inside text-xs space-y-1">
           <li><b>Precio:</b> monto bruto de venta. Suma completa a los ingresos del mes.</li>
-          <li><b>Comisión:</b> pago al agente. Es informativa, no se descuenta automáticamente de los ingresos (debe registrarse como gasto si aplica).</li>
+          <li><b>Comisión (%):</b> se ingresa como <b>porcentaje del precio</b>; el sistema calcula el monto.</li>
         </ul>
+        <Formula>Comisión = Precio × (% comisión / 100)</Formula>
       </Section>
       <Section title="Reparto de comisión a colegas">
         <p>Cuando la venta se cierra con uno o varios colegas, usa la sección <b>Colegas</b> del formulario para asignarle a cada uno un <b>% de la comisión</b>.</p>

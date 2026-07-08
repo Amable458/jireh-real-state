@@ -1162,9 +1162,13 @@ end $$;
 -- SECCIÓN: Reparto de comisión a colegas en ventas
 -- ============================================================
 alter table sales add column if not exists colegas jsonb;
+alter table sales add column if not exists "commissionPercent" numeric;
+update sales
+set "commissionPercent" = round(commission / price * 100.0, 4)
+where "commissionPercent" is null and commission is not null and price is not null and price > 0;
 
 do $$ begin
-  raise notice '✓ Colegas en ventas: sales.colegas listo.';
+  raise notice '✓ Colegas en ventas: sales.colegas + commissionPercent listos.';
 end $$;
 
 do $$ begin

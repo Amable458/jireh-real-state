@@ -21,9 +21,13 @@ import {
 
 const empty = () => ({
   date: todayISO(), propertyId: '', agentId: '',
-  buyer: '', price: '', commission: '', notes: '',
+  buyer: '', price: '', commissionPercent: '', notes: '',
   currency: 'DOP', exchangeRate: '', colegas: []
 });
+
+// Monto de comisión = precio × % / 100
+const commissionOf = (price, pct) =>
+  Math.round((Number(price) || 0) * (Number(pct) || 0)) / 100;
 
 export default function Sales() {
   const { year, month } = usePeriod();
@@ -53,7 +57,11 @@ export default function Sales() {
   const onAdd = () => { setEditId(null); setForm(empty()); setOpen(true); };
   const onEdit = (r) => {
     setEditId(r.id);
-    setForm({ ...empty(), ...r, price: r.price ?? '', commission: r.commission ?? '', currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? '', colegas: normalizeColegas(r.colegas) });
+    // % de comisión: usa el guardado o lo deriva del monto/precio (ventas viejas)
+    const pct = r.commissionPercent != null && r.commissionPercent !== ''
+      ? r.commissionPercent
+      : (Number(r.price) > 0 ? Math.round((Number(r.commission) || 0) / Number(r.price) * 10000) / 100 : '');
+    setForm({ ...empty(), ...r, price: r.price ?? '', commissionPercent: pct, currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? '', colegas: normalizeColegas(r.colegas) });
     setOpen(true);
   };
 
@@ -68,6 +76,9 @@ export default function Sales() {
     const pYear = Number.isNaN(d.getTime()) ? year : d.getFullYear();
     const pMonth = Number.isNaN(d.getTime()) ? month : d.getMonth() + 1;
     const colegas = normalizeColegas(form.colegas).filter((c) => c.name.trim() && Number(c.percent) > 0);
+    const price = Number(form.price) || 0;
+    const commissionPercent = Number(form.commissionPercent) || 0;
+    const commission = commissionOf(price, commissionPercent);
     const payload = {
       year: pYear, month: pMonth,
       date: form.date,
@@ -76,8 +87,9 @@ export default function Sales() {
       propertyName: property?.name || '',
       agentName: agent?.name || '',
       buyer: form.buyer,
-      price: Number(form.price) || 0,
-      commission: Number(form.commission) || 0,
+      price,
+      commissionPercent,
+      commission,
       currency, exchangeRate,
       colegas,
       notes: form.notes || ''
@@ -129,7 +141,12 @@ export default function Sales() {
       <span className={recCurrency(r) === 'USD' ? 'badge-warning' : 'badge-slate'}>{recCurrency(r)}</span>
     )},
     { key: 'price', label: 'Precio', render: (r) => fmtCur(r.price, recCurrency(r)), cellClassName: 'font-semibold text-emerald-700' },
-    { key: 'commission', label: 'Comisión', render: (r) => fmtCur(r.commission, recCurrency(r)) },
+    { key: 'commission', label: 'Comisión', render: (r) => (
+      <span>
+        {fmtCur(r.commission, recCurrency(r))}
+        {r.commissionPercent ? <span className="badge-slate ml-1">{Number(r.commissionPercent)}%</span> : null}
+      </span>
+    )},
     { key: 'colegas', label: 'Neto inmob.', render: (r) => {
       const colegas = normalizeColegas(r.colegas);
       const paidOut = colegasTotalAmount(colegas, r.commission);
@@ -232,14 +249,18 @@ export default function Sales() {
             <input type="number" step="0.01" className="input" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
           </div>
           <div>
-            <label className="label">Comisión ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
-            <input type="number" step="0.01" className="input" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })} />
+            <label className="label">Comisión (% del precio)</label>
+            <input type="number" step="0.01" min="0" max="100" className="input" placeholder="ej. 5" value={form.commissionPercent} onChange={(e) => setForm({ ...form, commissionPercent: e.target.value })} />
+            <p className="text-xs text-ink-500 mt-1">
+              Comisión = {fmtCur(commissionOf(form.price, form.commissionPercent), form.currency === 'USD' ? 'USD' : 'DOP')}
+              {Number(form.price) > 0 && Number(form.commissionPercent) > 0 ? ` (${form.commissionPercent}% de ${fmtCur(Number(form.price) || 0, form.currency === 'USD' ? 'USD' : 'DOP')})` : ''}
+            </p>
           </div>
 
           {/* Reparto de comisión a colegas */}
           {(() => {
             const ccy = form.currency === 'USD' ? 'USD' : 'DOP';
-            const commission = Number(form.commission) || 0;
+            const commission = commissionOf(form.price, form.commissionPercent);
             const totalPct = colegasTotalPercent(form.colegas);
             const totalColegas = colegasTotalAmount(form.colegas, commission);
             const net = commission - totalColegas;
