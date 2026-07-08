@@ -2,6 +2,7 @@ import { db } from '../db/database.js';
 import { fmtCur } from './currency.js';
 import { cleanupContractPayables } from './contractCharges.js';
 import { ensureAdminBonuses } from './adminBonus.js';
+import { cleanupOrphanSaleColegas } from './saleColegas.js';
 
 // ============================================================
 // Generación mensual a partir del catálogo de Inquilinos.
@@ -215,4 +216,5 @@ export async function ensureTenantCharges(year, month) {
   await cleanupOwnerPayments(year, month);
   await cleanupContractPayables(year, month);
   await ensureAdminBonuses(year, month);
+  await cleanupOrphanSaleColegas(year, month);
 }

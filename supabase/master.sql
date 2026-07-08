@@ -1158,6 +1158,15 @@ do $$ begin
   raise notice '✓ Limpieza aplicada: duplicados de renta eliminados, recurringKey restaurado, pagos a propietario prematuros removidos.';
 end $$;
 
+-- ============================================================
+-- SECCIÓN: Reparto de comisión a colegas en ventas
+-- ============================================================
+alter table sales add column if not exists colegas jsonb;
+
+do $$ begin
+  raise notice '✓ Colegas en ventas: sales.colegas listo.';
+end $$;
+
 do $$ begin
   raise notice '======================================================';
   raise notice '✓✓✓ MASTER.SQL COMPLETO — base de datos 100%% al día ✓✓✓';

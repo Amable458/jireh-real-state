@@ -118,6 +118,11 @@ const HELP = {
           <li><b>Comisión:</b> pago al agente. Es informativa, no se descuenta automáticamente de los ingresos (debe registrarse como gasto si aplica).</li>
         </ul>
       </Section>
+      <Section title="Reparto de comisión a colegas">
+        <p>Cuando la venta se cierra con uno o varios colegas, usa la sección <b>Colegas</b> del formulario para asignarle a cada uno un <b>% de la comisión</b>.</p>
+        <Formula>Pago al colega = Comisión × (% del colega / 100)</Formula>
+        <p>Cada colega se genera automáticamente como una <b>cuenta por pagar</b> (gasto pendiente) en <b>Gastos Mensuales</b>, en la moneda de la venta. La parte que no se reparte queda para la inmobiliaria: <b>Neto inmobiliaria = Comisión − suma de colegas</b>. Puedes tener varios colegas; si sumas más de 100% te avisa. Al editar o eliminar la venta, las cuentas por pagar pendientes se ajustan solas (las ya pagadas se conservan como historial).</p>
+      </Section>
       <Section title="Totales">
         <Formula>Total ventas = suma de precios del mes</Formula>
         <Formula>Comisiones = suma del campo Comisión del mes</Formula>

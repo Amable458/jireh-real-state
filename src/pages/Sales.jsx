@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Users } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -14,11 +14,15 @@ import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
+import {
+  normalizeColegas, makeColegaId, colegasTotalPercent, colegasTotalAmount,
+  syncSaleColegaPayables, removeSaleColegaPayables, cleanupOrphanSaleColegas
+} from '../utils/saleColegas.js';
 
 const empty = () => ({
   date: todayISO(), propertyId: '', agentId: '',
   buyer: '', price: '', commission: '', notes: '',
-  currency: 'DOP', exchangeRate: ''
+  currency: 'DOP', exchangeRate: '', colegas: []
 });
 
 export default function Sales() {
@@ -35,6 +39,7 @@ export default function Sales() {
   const [curFilter, setCurFilter] = useState('all');
 
   const load = async () => {
+    await cleanupOrphanSaleColegas(year, month);
     const [s, p, a] = await Promise.all([
       db.sales.where({ year, month }).toArray(),
       db.properties.toArray(),
@@ -42,13 +47,13 @@ export default function Sales() {
     ]);
     setRows(s); setProps(p); setAgents(a);
   };
-  useEffect(() => { load(); }, [year, month]);
-  useRealtimeTable(['sales', 'properties', 'agents'], () => load());
+  useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
+  useRealtimeTable(['sales', 'properties', 'agents', 'expenses'], () => load());
 
   const onAdd = () => { setEditId(null); setForm(empty()); setOpen(true); };
   const onEdit = (r) => {
     setEditId(r.id);
-    setForm({ ...empty(), ...r, price: r.price ?? '', commission: r.commission ?? '', currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? '' });
+    setForm({ ...empty(), ...r, price: r.price ?? '', commission: r.commission ?? '', currency: r.currency || 'DOP', exchangeRate: r.exchangeRate ?? '', colegas: normalizeColegas(r.colegas) });
     setOpen(true);
   };
 
@@ -62,6 +67,7 @@ export default function Sales() {
     const d = new Date(`${form.date}T00:00:00`);
     const pYear = Number.isNaN(d.getTime()) ? year : d.getFullYear();
     const pMonth = Number.isNaN(d.getTime()) ? month : d.getMonth() + 1;
+    const colegas = normalizeColegas(form.colegas).filter((c) => c.name.trim() && Number(c.percent) > 0);
     const payload = {
       year: pYear, month: pMonth,
       date: form.date,
@@ -73,20 +79,26 @@ export default function Sales() {
       price: Number(form.price) || 0,
       commission: Number(form.commission) || 0,
       currency, exchangeRate,
+      colegas,
       notes: form.notes || ''
     };
+    let saleId = editId;
     if (editId) {
       await db.sales.update(editId, payload);
       await logActivity(user.sub, user.username, 'sale.update', `id=${editId}`);
     } else {
-      const id = await db.sales.add({ ...payload, createdAt: new Date().toISOString() });
-      await logActivity(user.sub, user.username, 'sale.create', `id=${id}`);
+      saleId = await db.sales.add({ ...payload, createdAt: new Date().toISOString() });
+      await logActivity(user.sub, user.username, 'sale.create', `id=${saleId}`);
     }
+    // Genera/actualiza las cuentas por pagar a colegas
+    await syncSaleColegaPayables({ ...payload, id: saleId });
     setOpen(false); load();
   };
 
   const remove = async (id) => {
+    const row = rows.find((r) => r.id === id);
     await db.sales.delete(id);
+    if (row) await removeSaleColegaPayables(row);
     await logActivity(user.sub, user.username, 'sale.delete', `id=${id}`);
     load();
   };
@@ -118,6 +130,17 @@ export default function Sales() {
     )},
     { key: 'price', label: 'Precio', render: (r) => fmtCur(r.price, recCurrency(r)), cellClassName: 'font-semibold text-emerald-700' },
     { key: 'commission', label: 'Comisión', render: (r) => fmtCur(r.commission, recCurrency(r)) },
+    { key: 'colegas', label: 'Neto inmob.', render: (r) => {
+      const colegas = normalizeColegas(r.colegas);
+      const paidOut = colegasTotalAmount(colegas, r.commission);
+      const net = (Number(r.commission) || 0) - paidOut;
+      return colegas.length > 0
+        ? <span title={colegas.map((c) => `${c.name}: ${c.percent}%`).join(', ')}>
+            <span className="font-semibold text-emerald-700">{fmtCur(net, recCurrency(r))}</span>
+            <span className="badge-slate ml-1">{colegas.length} colega{colegas.length === 1 ? '' : 's'}</span>
+          </span>
+        : <span className="font-semibold text-emerald-700">{fmtCur(net, recCurrency(r))}</span>;
+    }},
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
         <button onClick={() => onEdit(r)} className="btn-ghost p-1.5"><Edit2 size={14} /></button>
@@ -212,6 +235,62 @@ export default function Sales() {
             <label className="label">Comisión ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
             <input type="number" step="0.01" className="input" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })} />
           </div>
+
+          {/* Reparto de comisión a colegas */}
+          {(() => {
+            const ccy = form.currency === 'USD' ? 'USD' : 'DOP';
+            const commission = Number(form.commission) || 0;
+            const totalPct = colegasTotalPercent(form.colegas);
+            const totalColegas = colegasTotalAmount(form.colegas, commission);
+            const net = commission - totalColegas;
+            const over = totalPct > 100;
+            const addColega = () => setForm({ ...form, colegas: [...(form.colegas || []), { id: makeColegaId(), name: '', percent: '' }] });
+            const setColega = (i, patch) => setForm({ ...form, colegas: form.colegas.map((c, j) => j === i ? { ...c, ...patch } : c) });
+            const delColega = (i) => setForm({ ...form, colegas: form.colegas.filter((_, j) => j !== i) });
+            return (
+              <div className="md:col-span-2 border border-ink-200 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label mb-0 flex items-center gap-1.5"><Users size={14} className="text-ink-500" /> Colegas (reparto de comisión)</label>
+                  <button type="button" className="btn-secondary text-xs py-1" onClick={addColega}><Plus size={14} /> Añadir colega</button>
+                </div>
+                {(form.colegas || []).length === 0 ? (
+                  <p className="text-xs text-ink-400">Sin colegas — toda la comisión es de la inmobiliaria. Añade uno si la venta se cerró con un colega.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {form.colegas.map((c, i) => {
+                      const amt = Math.round(commission * (Number(c.percent) || 0)) / 100;
+                      return (
+                        <div key={c.id} className="flex items-center gap-2">
+                          <input className="input flex-1 py-1.5" placeholder="Nombre del colega" value={c.name} onChange={(e) => setColega(i, { name: e.target.value })} />
+                          <div className="flex items-center gap-1">
+                            <input type="number" step="0.5" min="0" max="100" className="input w-20 py-1.5 text-right" placeholder="%" value={c.percent} onChange={(e) => setColega(i, { percent: e.target.value })} />
+                            <span className="text-sm text-ink-500">%</span>
+                          </div>
+                          <span className="text-xs text-ink-600 w-28 text-right">{fmtCur(amt, ccy)}</span>
+                          <button type="button" className="btn-ghost p-1 text-red-600" onClick={() => delColega(i)}><Trash2 size={14} /></button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {(form.colegas || []).length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-ink-100 text-sm space-y-1">
+                    <div className="flex justify-between text-ink-600">
+                      <span>Total a colegas ({totalPct}%)</span>
+                      <span className="font-medium">{fmtCur(totalColegas, ccy)}</span>
+                    </div>
+                    <div className={`flex justify-between font-semibold ${net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                      <span>Neto inmobiliaria ({Math.max(0, 100 - totalPct)}%)</span>
+                      <span>{fmtCur(net, ccy)}</span>
+                    </div>
+                    {over && <p className="text-xs text-red-600">Los colegas suman más de 100% de la comisión.</p>}
+                    <p className="text-xs text-ink-400">Cada colega se genera como cuenta por pagar en <b>Gastos Mensuales</b>, en {ccy}.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="md:col-span-2">
             <label className="label">Notas</label>
             <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
