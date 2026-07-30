@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, FileText, Pencil } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, Pencil } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import HelpButton from '../components/HelpButton.jsx';
@@ -11,22 +10,36 @@ import { useAuth } from '../store/auth.js';
 import { useSettings } from '../store/settings.js';
 import { monthName } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
-import { monthlyTotals, yearMonthlySeries } from '../utils/calc.js';
+import { yearTotals, seriesFromYear } from '../utils/calc.js';
 import { ensureTenantCharges } from '../utils/tenantCharges.js';
 import { db } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 
-function StatCard({ icon: Icon, label, value, color, sub }) {
+const MonthlyChart = lazy(() => import('../components/MonthlyChart.jsx'));
+
+// Tarjeta de indicador. El color se reserva para comunicar significado
+// (positivo / negativo), no para decorar: así el ojo va directo a la cifra.
+const TONES = {
+  neutral:  'bg-ink-100 text-ink-500',
+  income:   'bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-600/15',
+  expense:  'bg-red-50 text-red-600 ring-1 ring-inset ring-red-600/15',
+  balance:  'bg-ink-900 text-brand-400',
+  deficit:  'bg-red-600 text-white'
+};
+
+function StatCard({ icon: Icon, label, value, tone = 'neutral', sub, negative }) {
   return (
-    <div className="card card-body flex items-start gap-4">
-      <div className={`p-3 rounded-lg ${color}`}>
-        <Icon size={22} className="text-white" />
+    <div className="card card-body animate-in-up">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-500">{label}</p>
+        <span className={`shrink-0 p-1.5 rounded-lg ${TONES[tone]}`}>
+          <Icon size={16} aria-hidden="true" />
+        </span>
       </div>
-      <div className="min-w-0">
-        <p className="text-xs uppercase font-semibold text-ink-500">{label}</p>
-        <p className="text-xl font-bold text-ink-800 truncate">{value}</p>
-        {sub && <p className="text-xs text-ink-500 mt-0.5">{sub}</p>}
-      </div>
+      <p className={`mt-2 text-[22px] leading-tight font-bold tnum truncate ${negative ? 'text-red-600' : 'text-ink-900'}`}>
+        {value}
+      </p>
+      {sub && <p className="text-xs text-ink-500 mt-1 truncate">{sub}</p>}
     </div>
   );
 }
@@ -55,9 +68,18 @@ export default function Dashboard() {
 
   const load = async () => {
     await ensureTenantCharges(year, month); // genera rentas pendientes; el pago a propietario nace al cobrar
-    setTotals(await monthlyTotals(year, month));
-    setSeries(await yearMonthlySeries(year));
-    const tenants = await db.tenants.toArray();
+
+    // Un solo recorrido del año: 3 consultas cubren tanto el mes actual como
+    // la gráfica de 12 meses. Antes esto costaba ~52 consultas secuenciales.
+    const [months, tenants] = await Promise.all([
+      yearTotals(year),
+      db.tenants.toArray()
+    ]);
+
+    const current = months[month - 1] || months[0];
+    setTotals(current);
+    setSeries(seriesFromYear(months));
+
     const today = new Date();
     const in30 = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
     setContractAlerts(tenants.filter((t) => {
@@ -65,8 +87,8 @@ export default function Dashboard() {
       const d = new Date(t.contractEnd);
       return d >= today && d <= in30;
     }));
-    const rents = await db.rentals.where({ year, month }).toArray();
-    setPendingRentals(rents.filter((r) => r.status !== 'pagado').slice(0, 5));
+    // Las rentas del mes ya vienen dentro de `current`: no hace falta otra consulta
+    setPendingRentals(current.rentals.filter((r) => r.status !== 'pagado').slice(0, 5));
   };
 
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
@@ -95,19 +117,31 @@ export default function Dashboard() {
   const negativeBase = base.surplus < 0;
   const showDeficit = view === 'CONVERTED' ? negativeBase : view === 'USD' ? negativeUSD : negativeDOP;
 
+  // Desglose de qué compone el ingreso: rentas cobradas + comisión de ventas.
+  // El precio de venta NO entra aquí (ver nota en utils/calc.js).
+  const incomeSub = (d, ccy) => {
+    const rent = (d.rentalsPaid || 0) + (d.rentalsPartial || 0);
+    const comm = d.commissions || 0;
+    return comm > 0
+      ? `Rentas ${fmtCur(rent, ccy)} · Comisión ventas ${fmtCur(comm, ccy)}`
+      : `Rentas cobradas: ${fmtCur(rent, ccy)}`;
+  };
+
   // Tarjetas según la vista (sin comisiones: van en su panel dedicado abajo)
   const renderCards = () => {
     if (view === 'BOTH') {
       return (
         <>
-          <StatCard icon={TrendingUp} label="Ingresos RD$" value={fmtCur(dop.totalIncome, 'DOP')} color="bg-emerald-500" />
-          <StatCard icon={TrendingUp} label="Ingresos US$" value={fmtCur(usd.totalIncome, 'USD')} color="bg-emerald-600" />
-          <StatCard icon={TrendingDown} label="Gastos pagados RD$" value={fmtCur(dop.expensesPaid, 'DOP')} color="bg-red-500"
-            sub={dop.expensesAll > dop.expensesPaid ? `Pendiente: ${fmtCur(dop.expensesAll - dop.expensesPaid, 'DOP')}` : undefined} />
-          <StatCard icon={TrendingDown} label="Gastos pagados US$" value={fmtCur(usd.expensesPaid, 'USD')} color="bg-red-600"
-            sub={usd.expensesAll > usd.expensesPaid ? `Pendiente: ${fmtCur(usd.expensesAll - usd.expensesPaid, 'USD')}` : undefined} />
-          <StatCard icon={Wallet} label="Balance RD$" value={fmtCur(dop.surplus, 'DOP')} color={negativeDOP ? 'bg-red-500' : 'bg-ink-900'} />
-          <StatCard icon={Wallet} label="Balance US$" value={fmtCur(usd.surplus, 'USD')} color={negativeUSD ? 'bg-red-500' : 'bg-ink-800'} />
+          <StatCard icon={TrendingUp} label="Ingresos RD$" value={fmtCur(dop.totalIncome, 'DOP')} tone="income" sub={incomeSub(dop, 'DOP')} />
+          <StatCard icon={TrendingUp} label="Ingresos US$" value={fmtCur(usd.totalIncome, 'USD')} tone="income" sub={incomeSub(usd, 'USD')} />
+          <StatCard icon={TrendingDown} label="Gastos pagados RD$" value={fmtCur(dop.expensesPaid, 'DOP')} tone="expense"
+            sub={dop.expensesAll > dop.expensesPaid ? `Pendiente: ${fmtCur(dop.expensesAll - dop.expensesPaid, 'DOP')}` : 'Sin pendientes'} />
+          <StatCard icon={TrendingDown} label="Gastos pagados US$" value={fmtCur(usd.expensesPaid, 'USD')} tone="expense"
+            sub={usd.expensesAll > usd.expensesPaid ? `Pendiente: ${fmtCur(usd.expensesAll - usd.expensesPaid, 'USD')}` : 'Sin pendientes'} />
+          <StatCard icon={Wallet} label="Balance RD$" value={fmtCur(dop.surplus, 'DOP')} tone={negativeDOP ? 'deficit' : 'balance'} negative={negativeDOP}
+            sub={negativeDOP ? 'Déficit del mes' : 'Excedente disponible'} />
+          <StatCard icon={Wallet} label="Balance US$" value={fmtCur(usd.surplus, 'USD')} tone={negativeUSD ? 'deficit' : 'balance'} negative={negativeUSD}
+            sub={negativeUSD ? 'Déficit del mes' : 'Excedente disponible'} />
         </>
       );
     }
@@ -117,17 +151,18 @@ export default function Dashboard() {
     const suffix = view === 'CONVERTED' ? ' (convertido a RD$)' : '';
     return (
       <>
-        <StatCard icon={TrendingUp} label={`Ingresos totales${suffix}`} value={fmtCur(d.totalIncome, ccy)} color="bg-emerald-500" sub={`Rentas: ${fmtCur((d.rentalsPaid || 0) + (d.rentalsPartial || 0), ccy)}`} />
-        <StatCard icon={TrendingDown} label={`Gastos pagados${suffix}`} value={fmtCur(d.expensesPaid || 0, ccy)} color="bg-red-500"
+        <StatCard icon={TrendingUp} label={`Ingresos totales${suffix}`} value={fmtCur(d.totalIncome, ccy)} tone="income" sub={incomeSub(d, ccy)} />
+        <StatCard icon={TrendingDown} label={`Gastos pagados${suffix}`} value={fmtCur(d.expensesPaid || 0, ccy)} tone="expense"
           sub={(d.expensesAll || 0) > (d.expensesPaid || 0) ? `Comprometido total: ${fmtCur(d.expensesAll, ccy)}` : 'Sin pendientes'} />
-        <StatCard icon={Wallet} label={`Balance neto${suffix}`} value={fmtCur(d.surplus, ccy)} color={neg ? 'bg-red-500' : 'bg-ink-900'} sub={neg ? 'Déficit del mes' : 'Excedente disponible'} />
+        <StatCard icon={Wallet} label={`Balance neto${suffix}`} value={fmtCur(d.surplus, ccy)} tone={neg ? 'deficit' : 'balance'} negative={neg}
+          sub={neg ? 'Déficit del mes' : 'Excedente disponible'} />
       </>
     );
   };
 
   // Resumen de rentas de inquilinos + comisión total (rentas + ventas)
   const rentSummary = (() => {
-    const mk = () => ({ rent: 0, comm: 0, count: 0 });
+    const mk = () => ({ rent: 0, comm: 0, count: 0, saleVol: 0, saleCount: 0 });
     const s = { DOP: mk(), USD: mk() };
     for (const r of totals.rentals) {
       if (r.commissionAmount == null && r.commissionPercent == null) continue;
@@ -140,10 +175,13 @@ export default function Dashboard() {
     for (const v of totals.sales) {
       const c = recCurrency(v);
       s[c].comm += Number(v.commission) || 0;
+      s[c].saleVol += Number(v.price) || 0;
+      s[c].saleCount += 1;
     }
     return s;
   })();
   const hasCommission = rentSummary.DOP.comm > 0 || rentSummary.USD.comm > 0 || rentSummary.DOP.count > 0 || rentSummary.USD.count > 0;
+  const salesCount = rentSummary.DOP.saleCount + rentSummary.USD.saleCount;
 
   // Datos de la gráfica según vista
   const chartData = series.map((s) => {
@@ -167,21 +205,27 @@ export default function Dashboard() {
 
       {/* Barra de control de moneda */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div className="inline-flex rounded-lg border border-ink-200 bg-white p-1">
+        <div className="inline-flex rounded-xl border border-ink-200 bg-white p-1 shadow-sm" role="group" aria-label="Moneda a mostrar">
           {VIEWS.map((v) => (
             <button
               key={v.value}
               onClick={() => setView(v.value)}
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${view === v.value ? 'bg-brand-500 text-ink-900 font-semibold' : 'text-ink-600 hover:bg-ink-50'}`}
+              aria-pressed={view === v.value}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors duration-150 ease-out-soft
+                          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                            view === v.value
+                              ? 'bg-brand-500 text-ink-900 font-semibold shadow-sm'
+                              : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900'
+                          }`}
             >
               {v.label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 text-sm text-ink-600">
-          <span>Tasa USD → DOP: <b className="text-ink-900">{usdToDop}</b></span>
+        <div className="flex items-center gap-1.5 text-sm text-ink-600">
+          <span>Tasa USD → DOP: <b className="text-ink-900 tnum">{usdToDop}</b></span>
           {canEditRate && (
-            <button onClick={() => { setRateInput(String(usdToDop)); setRateErr(''); setRateModal(true); }} className="btn-ghost p-1.5" title="Editar tasa">
+            <button onClick={() => { setRateInput(String(usdToDop)); setRateErr(''); setRateModal(true); }} className="btn-ghost p-1.5" title="Editar tasa" aria-label="Editar tasa de cambio">
               <Pencil size={14} />
             </button>
           )}
@@ -189,11 +233,11 @@ export default function Dashboard() {
       </div>
 
       {showDeficit && (
-        <div className="mb-5 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex items-start gap-3">
-          <AlertTriangle className="text-red-600 mt-0.5" size={20} />
+        <div className="mb-5 bg-red-50 ring-1 ring-inset ring-red-600/20 p-4 rounded-xl flex items-start gap-3 animate-in-up" role="status">
+          <AlertTriangle className="text-red-600 mt-0.5 shrink-0" size={20} aria-hidden="true" />
           <div>
             <p className="font-semibold text-red-800">Mes deficitario</p>
-            <p className="text-sm text-red-700">Los gastos superaron a los ingresos. No se aplicará distribución de fondos este mes.</p>
+            <p className="text-sm text-red-700 mt-0.5">Los gastos superaron a los ingresos. No se aplicará distribución de fondos este mes.</p>
           </div>
         </div>
       )}
@@ -203,95 +247,90 @@ export default function Dashboard() {
       </div>
 
       {hasCommission && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${salesCount > 0 ? 'lg:grid-cols-3' : ''} gap-4 mb-5`}>
           <div className="card card-body">
-            <p className="text-xs uppercase font-semibold text-ink-500 mb-1">Rentas de inquilinos (cobro del mes)</p>
-            {rentSummary.DOP.count > 0 && <p className="text-lg font-bold text-ink-900">{fmtCur(rentSummary.DOP.rent, 'DOP')}</p>}
-            {rentSummary.USD.count > 0 && <p className="text-lg font-bold text-ink-900">{fmtCur(rentSummary.USD.rent, 'USD')}</p>}
+            <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Rentas de inquilinos (cobro del mes)</p>
+            {rentSummary.DOP.count > 0 && <p className="text-lg font-bold text-ink-900 tnum">{fmtCur(rentSummary.DOP.rent, 'DOP')}</p>}
+            {rentSummary.USD.count > 0 && <p className="text-lg font-bold text-ink-900 tnum">{fmtCur(rentSummary.USD.rent, 'USD')}</p>}
             {rentSummary.DOP.count + rentSummary.USD.count === 0 && <p className="text-lg font-bold text-ink-400">—</p>}
-            <p className="text-xs text-ink-500 mt-1">{rentSummary.DOP.count + rentSummary.USD.count} renta(s) — monto total a cobrar a inquilinos</p>
+            <p className="text-xs text-ink-500 mt-1.5">{rentSummary.DOP.count + rentSummary.USD.count} renta(s) — monto total a cobrar a inquilinos</p>
           </div>
+
           <div className="card card-body">
-            <p className="text-xs uppercase font-semibold text-ink-500 mb-1">Comisión — lo que nos toca</p>
-            {rentSummary.DOP.comm > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.DOP.comm, 'DOP')}</p>}
-            {rentSummary.USD.comm > 0 && <p className="text-lg font-bold text-emerald-700">{fmtCur(rentSummary.USD.comm, 'USD')}</p>}
+            <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Comisión — lo que nos toca</p>
+            {rentSummary.DOP.comm > 0 && <p className="text-lg font-bold text-emerald-700 tnum">{fmtCur(rentSummary.DOP.comm, 'DOP')}</p>}
+            {rentSummary.USD.comm > 0 && <p className="text-lg font-bold text-emerald-700 tnum">{fmtCur(rentSummary.USD.comm, 'USD')}</p>}
             {rentSummary.DOP.comm === 0 && rentSummary.USD.comm === 0 && <p className="text-lg font-bold text-ink-400">—</p>}
-            <p className="text-xs text-ink-500 mt-1">Comisión de rentas (% de inquilinos) + comisión de ventas</p>
+            <p className="text-xs text-ink-500 mt-1.5">Comisión de rentas (% de inquilinos) + comisión de ventas</p>
           </div>
+
+          {/* Volumen vendido: indicador de actividad comercial, no de caja.
+              El precio de la propiedad nunca pasa por la inmobiliaria. */}
+          {salesCount > 0 && (
+            <div className="card card-body">
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Volumen de ventas (referencia)</p>
+              {rentSummary.DOP.saleCount > 0 && <p className="text-lg font-bold text-ink-700 tnum">{fmtCur(rentSummary.DOP.saleVol, 'DOP')}</p>}
+              {rentSummary.USD.saleCount > 0 && <p className="text-lg font-bold text-ink-700 tnum">{fmtCur(rentSummary.USD.saleVol, 'USD')}</p>}
+              <p className="text-xs text-ink-500 mt-1.5">
+                {salesCount} venta(s) cerradas. <span className="text-ink-400">No es ingreso: solo entra la comisión.</span>
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
         <div className="card card-body lg:col-span-2">
-          <h3 className="font-semibold text-ink-700 mb-3">
+          <h3 className="font-semibold text-ink-800 mb-4">
             Comparativa mensual del año {year}
             {view === 'CONVERTED' && <span className="text-xs font-normal text-ink-400 ml-2">(convertido a RD$)</span>}
             {view === 'BOTH' && <span className="text-xs font-normal text-ink-400 ml-2">(RD$ y US$ por separado)</span>}
           </h3>
+          {/* Altura reservada de antemano: la gráfica llega después sin
+              empujar el contenido de abajo (evita salto de layout). */}
           <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v, n) => {
-                  const c = String(n).includes('US$') ? 'USD' : chartCcy;
-                  return fmtCur(v, c);
-                }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                {view === 'BOTH' ? (
-                  <>
-                    <Bar dataKey="Ingresos RD$" fill="#059669" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Gastos RD$" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Ingresos US$" fill="#34d399" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Gastos US$" fill="#f87171" radius={[4, 4, 0, 0]} />
-                  </>
-                ) : (
-                  <>
-                    <Bar dataKey="Ingresos" fill="#059669" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Gastos" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Excedente" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                  </>
-                )}
-              </BarChart>
-            </ResponsiveContainer>
+            <Suspense fallback={
+              <div className="h-full w-full rounded-lg bg-ink-50/70 animate-pulse" aria-label="Cargando gráfica" />
+            }>
+              <MonthlyChart data={chartData} view={view} chartCcy={chartCcy} />
+            </Suspense>
           </div>
         </div>
 
         <div className="card card-body">
-          <h3 className="font-semibold text-ink-700 mb-3 flex items-center gap-2">
-            <Bell size={18} className="text-amber-500" /> Alertas
+          <h3 className="font-semibold text-ink-800 mb-4 flex items-center gap-2">
+            <Bell size={17} className="text-amber-500" aria-hidden="true" /> Alertas
           </h3>
-          <div className="space-y-3 text-sm">
+          <div className="space-y-4 text-sm">
             <div>
-              <p className="font-semibold text-ink-600 mb-1 flex items-center gap-1">
-                <Calendar size={14} /> Contratos por vencer (30 días)
+              <p className="font-medium text-ink-600 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                <Calendar size={13} aria-hidden="true" /> Contratos por vencer (30 días)
               </p>
               {contractAlerts.length === 0
                 ? <p className="text-xs text-ink-400">Ninguno</p>
                 : (
                   <ul className="space-y-1">
                     {contractAlerts.map((c) => (
-                      <li key={c.id} className="flex justify-between gap-2 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      <li key={c.id} className="flex justify-between items-center gap-2 bg-amber-50 ring-1 ring-inset ring-amber-600/20 rounded-lg px-2.5 py-2">
                         <span className="truncate">{c.name}</span>
-                        <span className="text-xs text-amber-700 font-medium">{c.contractEnd}</span>
+                        <span className="text-xs text-amber-800 font-medium tnum shrink-0">{c.contractEnd}</span>
                       </li>
                     ))}
                   </ul>
                 )}
             </div>
             <div>
-              <p className="font-semibold text-ink-600 mb-1 flex items-center gap-1">
-                <AlertTriangle size={14} /> Rentas pendientes este mes
+              <p className="font-medium text-ink-600 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                <AlertTriangle size={13} aria-hidden="true" /> Rentas pendientes este mes
               </p>
               {pendingRentals.length === 0
                 ? <p className="text-xs text-ink-400">Sin pendientes</p>
                 : (
                   <ul className="space-y-1">
                     {pendingRentals.map((r) => (
-                      <li key={r.id} className="flex justify-between gap-2 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+                      <li key={r.id} className="flex justify-between items-center gap-2 bg-red-50 ring-1 ring-inset ring-red-600/20 rounded-lg px-2.5 py-2">
                         <span className="truncate">{r.tenantName || `Inquilino #${r.tenantId}`}</span>
-                        <span className="text-xs text-red-700 font-medium">{fmtCur(r.amount, recCurrency(r))}</span>
+                        <span className="text-xs text-red-700 font-medium tnum shrink-0">{fmtCur(r.amount, recCurrency(r))}</span>
                       </li>
                     ))}
                   </ul>

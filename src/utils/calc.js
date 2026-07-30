@@ -14,22 +14,23 @@ async function getGlobalRate() {
 function blankAgg() {
   return {
     rentalsPaid: 0, rentalsPartial: 0, rentalsPending: 0,
-    salesAmount: 0, commissions: 0,
+    // salesVolume = precio de las propiedades vendidas. Es un indicador de
+    // actividad comercial, NO un ingreso (ver nota en totalIncome).
+    salesVolume: 0,
+    // commissions = lo que realmente factura la inmobiliaria por esas ventas.
+    commissions: 0,
     expensesAll: 0, expensesPaid: 0,
     totalIncome: 0, surplus: 0
   };
 }
 
-export async function monthlyTotals(year, month) {
-  const [rentals, sales, expenses] = await Promise.all([
-    db.rentals.where({ year, month }).toArray(),
-    db.sales.where({ year, month }).toArray(),
-    db.expenses.where({ year, month }).toArray()
-  ]);
-  const rate = await getGlobalRate();
-
-  const cur = { DOP: blankAgg(), USD: blankAgg() };  // montos en su moneda nativa
-  const base = blankAgg();                            // todo convertido a DOP
+// ------------------------------------------------------------------
+// Agrega registros ya filtrados por periodo. Función pura: no toca la BD,
+// así el resumen mensual y el anual comparten exactamente la misma lógica.
+// ------------------------------------------------------------------
+function aggregate(rentals, sales, expenses, rate) {
+  const cur = { DOP: blankAgg(), USD: blankAgg() }; // montos en su moneda nativa
+  const base = blankAgg();                          // todo convertido a DOP
 
   for (const r of rentals) {
     const c = recCurrency(r);
@@ -47,9 +48,9 @@ export async function monthlyTotals(year, month) {
 
   for (const s of sales) {
     const c = recCurrency(s);
-    cur[c].salesAmount += Number(s.price) || 0;
+    cur[c].salesVolume += Number(s.price) || 0;
     cur[c].commissions += Number(s.commission) || 0;
-    base.salesAmount += toBase(s.price, s, rate);
+    base.salesVolume += toBase(s.price, s, rate);
     base.commissions += toBase(s.commission, s, rate);
   }
 
@@ -63,38 +64,92 @@ export async function monthlyTotals(year, month) {
     }
   }
 
+  // ----------------------------------------------------------------
+  // INGRESO REAL DE LA INMOBILIARIA — las rentas y las ventas NO se tratan
+  // igual, y la diferencia es intencional:
+  //
+  // • Rentas: entra el monto COMPLETO porque el dinero sí pasa por nosotros.
+  //   Cobramos al inquilino y después le pagamos al propietario; ese pago se
+  //   registra como gasto automático al momento de cobrar
+  //   (ver tenantCharges.createOwnerPayment). Neto = nuestra comisión.
+  //
+  // • Ventas: entra SOLO la comisión. El precio de la propiedad va del
+  //   comprador al vendedor directamente y nunca toca nuestras cuentas, así
+  //   que contarlo como ingreso inflaba el dashboard, la distribución de
+  //   fondos y las bonificaciones. El reparto con colegas ya se descuenta
+  //   aparte como gasto (ver saleColegas.syncSaleColegaPayables).
+  //
+  // salesVolume queda disponible como dato informativo de volumen vendido.
+  // ----------------------------------------------------------------
   for (const c of ['DOP', 'USD']) {
-    cur[c].totalIncome = cur[c].rentalsPaid + cur[c].rentalsPartial + cur[c].salesAmount;
+    cur[c].totalIncome = cur[c].rentalsPaid + cur[c].rentalsPartial + cur[c].commissions;
     // Balance real: solo cuenta lo que YA se pagó. Un gasto pendiente (ej.
     // recién generado a inicio de mes) no debe descuadrar el balance hasta
     // que efectivamente se pague.
     cur[c].surplus = cur[c].totalIncome - cur[c].expensesPaid;
   }
-  base.totalIncome = base.rentalsPaid + base.rentalsPartial + base.salesAmount;
+  base.totalIncome = base.rentalsPaid + base.rentalsPartial + base.commissions;
   base.surplus = base.totalIncome - base.expensesPaid;
 
   // Campos planos = consolidado a DOP (compatibilidad con Distribución y Bonificaciones)
-  return {
-    rentals, sales, expenses, rate,
-    cur,
-    ...base
+  return { rentals, sales, expenses, rate, cur, ...base };
+}
+
+export async function monthlyTotals(year, month) {
+  const [rentals, sales, expenses, rate] = await Promise.all([
+    db.rentals.where({ year, month }).toArray(),
+    db.sales.where({ year, month }).toArray(),
+    db.expenses.where({ year, month }).toArray(),
+    getGlobalRate()
+  ]);
+  return aggregate(rentals, sales, expenses, rate);
+}
+
+// ------------------------------------------------------------------
+// Totales de los 12 meses del año en 3 consultas + 1 lectura de tasa.
+// Antes esto se resolvía llamando monthlyTotals() doce veces, lo que
+// disparaba ~52 consultas secuenciales a Supabase cada vez que se abría el
+// dashboard. Ahora se trae el año completo y se agrupa por mes en memoria.
+// ------------------------------------------------------------------
+export async function yearTotals(year) {
+  const [rentals, sales, expenses, rate] = await Promise.all([
+    db.rentals.where({ year }).toArray(),
+    db.sales.where({ year }).toArray(),
+    db.expenses.where({ year }).toArray(),
+    getGlobalRate()
+  ]);
+
+  const bucket = (rows) => {
+    const months = Array.from({ length: 12 }, () => []);
+    for (const r of rows) {
+      const i = (Number(r.month) || 0) - 1;
+      if (i >= 0 && i < 12) months[i].push(r);
+    }
+    return months;
   };
+
+  const rentalsBy = bucket(rentals);
+  const salesBy = bucket(sales);
+  const expensesBy = bucket(expenses);
+
+  return Array.from({ length: 12 }, (_, i) =>
+    aggregate(rentalsBy[i], salesBy[i], expensesBy[i], rate)
+  );
+}
+
+export function seriesFromYear(months) {
+  return months.map((t, i) => ({
+    month: i + 1,
+    // "expenses" en la gráfica = gastos PAGADOS, para que coincida con
+    // el excedente (Ingresos - Gastos pagados = Excedente).
+    dop: { income: t.cur.DOP.totalIncome, expenses: t.cur.DOP.expensesPaid, surplus: t.cur.DOP.surplus },
+    usd: { income: t.cur.USD.totalIncome, expenses: t.cur.USD.expensesPaid, surplus: t.cur.USD.surplus },
+    base: { income: t.totalIncome, expenses: t.expensesPaid, surplus: t.surplus }
+  }));
 }
 
 export async function yearMonthlySeries(year) {
-  const result = [];
-  for (let m = 1; m <= 12; m++) {
-    const t = await monthlyTotals(year, m);
-    result.push({
-      month: m,
-      // "expenses" en la gráfica = gastos PAGADOS, para que coincida con
-      // el excedente (Ingresos - Gastos pagados = Excedente).
-      dop: { income: t.cur.DOP.totalIncome, expenses: t.cur.DOP.expensesPaid, surplus: t.cur.DOP.surplus },
-      usd: { income: t.cur.USD.totalIncome, expenses: t.cur.USD.expensesPaid, surplus: t.cur.USD.surplus },
-      base: { income: t.totalIncome, expenses: t.expensesPaid, surplus: t.surplus }
-    });
-  }
-  return result;
+  return seriesFromYear(await yearTotals(year));
 }
 
 export async function calcBonuses(year, month) {

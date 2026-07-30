@@ -36,8 +36,15 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif']
       },
       boxShadow: {
-        card: '0 1px 2px rgba(16, 19, 28, 0.04), 0 1px 3px rgba(16, 19, 28, 0.06)',
-        lift: '0 4px 12px rgba(16, 19, 28, 0.08)'
+        // Sombras en capas: una línea de contacto muy tenue + una difusa.
+        // Se leen como profundidad real en vez de una mancha gris.
+        card: '0 1px 2px rgba(16, 19, 28, 0.04), 0 1px 3px rgba(16, 19, 28, 0.05)',
+        lift: '0 2px 4px rgba(16, 19, 28, 0.04), 0 8px 20px -4px rgba(16, 19, 28, 0.10)',
+        pop:  '0 4px 8px rgba(16, 19, 28, 0.05), 0 16px 40px -8px rgba(16, 19, 28, 0.18)'
+      },
+      transitionTimingFunction: {
+        'out-soft': 'cubic-bezier(0.23, 1, 0.32, 1)',
+        'in-out-soft': 'cubic-bezier(0.77, 0, 0.175, 1)'
       }
     }
   },

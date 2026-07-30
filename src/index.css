@@ -2,48 +2,166 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Tokens de movimiento
+   Curvas propias: las incorporadas de CSS son demasiado suaves y
+   hacen que la interfaz se sienta lenta.
+   ============================================================ */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  /* Escala al presionar. Es una variable porque Tailwind expande `@apply btn`
+     a .btn-primary, .btn-secondary, etc.: una regla suelta sobre `.btn` no
+     alcanzaría a ninguna. La variable sí se hereda a todas. */
+  --press-scale: 0.97;
+}
+
 html, body, #root { height: 100%; }
+
 body {
   font-family: 'Inter', system-ui, sans-serif;
   background-color: #f7f8fa;
   color: #1a1f2c;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* Tracking ligeramente cerrado: más nítido en tamaños grandes */
+h1, h2, h3 { letter-spacing: -0.018em; }
 
 @layer components {
+  /* ---------- Botones ---------- */
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+           select-none disabled:opacity-50 disabled:cursor-not-allowed
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    transition:
+      background-color var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
   }
-  /* Primario: amarillo de marca con texto oscuro */
-  .btn-primary   { @apply btn bg-brand-500 text-ink-900 hover:bg-brand-400 focus:ring-brand-500; }
-  .btn-secondary { @apply btn bg-white border border-ink-200 text-ink-700 hover:bg-ink-50 focus:ring-brand-500; }
-  .btn-dark      { @apply btn bg-ink-900 text-white hover:bg-ink-800 focus:ring-ink-500; }
-  .btn-danger    { @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500; }
-  .btn-success   { @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500; }
-  .btn-ghost     { @apply btn text-ink-600 hover:bg-ink-100 focus:ring-brand-500; }
+  /* Respuesta al presionar: confirma que la interfaz escuchó al usuario */
+  .btn:active:not(:disabled) { transform: scale(var(--press-scale)); }
 
+  .btn-primary   { @apply btn bg-brand-500 text-ink-900 shadow-sm hover:bg-brand-400 focus-visible:ring-brand-500; }
+  .btn-secondary { @apply btn bg-white border border-ink-200 text-ink-700 shadow-sm hover:bg-ink-50 hover:border-ink-300 focus-visible:ring-brand-500; }
+  .btn-dark      { @apply btn bg-ink-900 text-white shadow-sm hover:bg-ink-800 focus-visible:ring-ink-500; }
+  .btn-danger    { @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500; }
+  .btn-success   { @apply btn bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 focus-visible:ring-emerald-500; }
+  .btn-ghost     { @apply btn text-ink-600 hover:bg-ink-100 hover:text-ink-900 focus-visible:ring-brand-500; }
+
+  /* ---------- Campos ---------- */
   .input {
-    @apply block w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none disabled:bg-ink-50;
+    @apply block w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900
+           shadow-sm placeholder:text-ink-400 hover:border-ink-300
+           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25 focus:outline-none
+           disabled:bg-ink-50 disabled:text-ink-400;
+    transition:
+      border-color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
   }
-  .label { @apply block text-sm font-medium text-ink-700 mb-1; }
-  .card  { @apply bg-white rounded-xl shadow-card border border-ink-100; }
+  .label { @apply block text-sm font-medium text-ink-700 mb-1.5; }
+
+  /* ---------- Superficies ---------- */
+  .card {
+    @apply bg-white rounded-xl border border-ink-100 shadow-card;
+    transition: box-shadow var(--dur-slow) var(--ease-out), border-color var(--dur-slow) var(--ease-out);
+  }
   .card-body { @apply p-5; }
 
-  .badge { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium; }
-  .badge-success { @apply badge bg-emerald-100 text-emerald-800; }
-  .badge-warning { @apply badge bg-amber-100 text-amber-800; }
-  .badge-danger  { @apply badge bg-red-100 text-red-700; }
-  .badge-info    { @apply badge bg-ink-100 text-ink-700; }
-  .badge-slate   { @apply badge bg-ink-100 text-ink-600; }
+  /* Solo con puntero real: en pantallas táctiles el hover es un falso positivo */
+  @media (hover: hover) and (pointer: fine) {
+    .card-interactive:hover { @apply shadow-lift border-ink-200; }
+  }
 
-  .table-wrap { @apply overflow-x-auto rounded-lg border border-ink-100; }
+  /* ---------- Etiquetas de estado ---------- */
+  .badge { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset; }
+  .badge-success { @apply badge bg-emerald-50 text-emerald-700 ring-emerald-600/20; }
+  .badge-warning { @apply badge bg-amber-50 text-amber-800 ring-amber-600/25; }
+  .badge-danger  { @apply badge bg-red-50 text-red-700 ring-red-600/20; }
+  .badge-info    { @apply badge bg-ink-50 text-ink-700 ring-ink-500/20; }
+  .badge-slate   { @apply badge bg-ink-50 text-ink-600 ring-ink-500/15; }
+
+  /* ---------- Tablas ---------- */
+  .table-wrap { @apply overflow-x-auto rounded-xl border border-ink-100 bg-white; }
   .table { @apply w-full text-sm; }
-  .table thead { @apply bg-ink-50 text-ink-500 text-xs uppercase tracking-wide; }
-  .table th { @apply text-left font-semibold px-4 py-3 cursor-pointer select-none; }
-  .table td { @apply px-4 py-3 border-t border-ink-100 text-ink-700; }
-  .table tbody tr:hover { @apply bg-ink-50/60; }
+  .table thead { @apply bg-ink-50/70 text-ink-500 text-[11px] uppercase tracking-wider; }
+  .table th { @apply text-left font-semibold px-4 py-3 select-none; }
+  /* El cursor de "ordenable" solo donde de verdad se puede ordenar */
+  .table th.is-sortable { @apply cursor-pointer hover:text-ink-800; }
+  .table td { @apply px-4 py-3 border-t border-ink-100 text-ink-700 align-middle; }
+  .table tbody tr { transition: background-color var(--dur-fast) var(--ease-out); }
+  @media (hover: hover) and (pointer: fine) {
+    .table tbody tr:hover { @apply bg-brand-50/50; }
+  }
+
+  /* ---------- Contenido de las guías (HelpButton) ---------- */
+  .prose-help h4 { @apply font-semibold text-ink-900 mt-4 mb-1 first:mt-0; }
+  .prose-help p + p { @apply mt-2; }
+  .prose-help ul { @apply list-disc pl-5 space-y-1 marker:text-ink-300; }
+  .prose-help ol { @apply list-decimal pl-5 space-y-1 marker:text-ink-400; }
+  .prose-help b, .prose-help strong { @apply font-semibold text-ink-900; }
+  .prose-help code { @apply bg-ink-50 text-ink-800 rounded px-1 py-0.5 text-[0.85em] ring-1 ring-inset ring-ink-200/60; }
 }
 
+/* En móvil los campos suben a 16px y 44px de alto.
+   Safari en iOS hace zoom automático al enfocar un campo con letra menor de
+   16px, y 44px es el mínimo cómodo para el dedo. En escritorio se mantiene
+   la escala compacta de 14px. */
+@media (max-width: 639px) {
+  .input,
+  input.input,
+  select.input,
+  textarea.input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+
+@layer utilities {
+  /* Cifras de ancho fijo: las columnas de dinero dejan de "bailar"
+     al cambiar de valor y los decimales quedan alineados. */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* Entradas de contenido. Nunca desde scale(0): nada aparece de la nada. */
+  .animate-in-up { animation: jr-in-up var(--dur-slow) var(--ease-out) both; }
+  .animate-in-scale { animation: jr-in-scale var(--dur-base) var(--ease-out) both; }
+}
+
+@keyframes jr-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes jr-in-scale {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes jr-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ---------- Barra de desplazamiento ---------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #eef0f4; }
-::-webkit-scrollbar-thumb { background: #b2b9c6; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #7e8799; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d8dce4; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #b2b9c6; background-clip: content-box; }
+
+/* ---------- Movimiento reducido ----------
+   No se elimina todo: se conserva el desvanecido (ayuda a entender el
+   cambio) y se quita el desplazamiento, que es lo que marea. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --press-scale: 1; } /* anula la escala al presionar en todas las variantes */
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-in-up, .animate-in-scale { animation: jr-fade 0.01ms both; }
+}

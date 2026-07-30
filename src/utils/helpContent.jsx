@@ -24,8 +24,14 @@ const HELP = {
         <p>Resumen financiero del mes seleccionado y comparativa anual.</p>
       </Section>
       <Section title="Ingresos totales">
-        <Formula>Rentas pagadas + Rentas parciales (lo cobrado) + Ventas del mes</Formula>
+        <Formula>Rentas pagadas + Rentas parciales (lo cobrado) + Comisión de las ventas del mes</Formula>
         <p>Las rentas <b>pendientes</b> NO se suman al ingreso. Las parciales solo aportan la parte efectivamente cobrada.</p>
+        <p><b>Importante — por qué las rentas y las ventas no se cuentan igual:</b></p>
+        <ul>
+          <li><b>Rentas:</b> entra el monto completo porque el dinero sí pasa por la inmobiliaria. Usted le cobra al inquilino y después le paga al propietario; ese pago se registra solo como gasto al momento de cobrar, así que al final le queda su comisión.</li>
+          <li><b>Ventas:</b> entra <b>solo la comisión</b>, no el precio del inmueble. Los millones de una venta van del comprador al vendedor directamente y nunca pasan por sus cuentas. Si se contara el precio como ingreso, el dashboard, la distribución de fondos y las bonificaciones quedarían inflados.</li>
+        </ul>
+        <p>El precio total de las propiedades vendidas se muestra aparte, en la tarjeta <b>Volumen de ventas (referencia)</b>, como indicador de actividad comercial.</p>
       </Section>
       <Section title="Gastos pagados">
         <Formula>Suma de "Monto mensual" de los gastos con estado PAGADO únicamente</Formula>
@@ -114,10 +120,11 @@ const HELP = {
       </Section>
       <Section title="Campos clave">
         <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Precio:</b> monto bruto de venta. Suma completa a los ingresos del mes.</li>
-          <li><b>Comisión (%):</b> se ingresa como <b>porcentaje del precio</b>; el sistema calcula el monto.</li>
+          <li><b>Precio:</b> monto bruto de venta del inmueble. Es un dato de referencia (volumen vendido), <b>no</b> suma a los ingresos.</li>
+          <li><b>Comisión (%):</b> se ingresa como <b>porcentaje del precio</b>; el sistema calcula el monto. <b>Esto sí es el ingreso</b> de la inmobiliaria.</li>
         </ul>
         <Formula>Comisión = Precio × (% comisión / 100)</Formula>
+        <p>El precio de la propiedad va del comprador al vendedor directamente y nunca pasa por las cuentas de la inmobiliaria, por eso el dashboard solo cuenta la comisión.</p>
       </Section>
       <Section title="Reparto de comisión a colegas">
         <p>Cuando la venta se cierra con uno o varios colegas, usa la sección <b>Colegas</b> del formulario para asignarle a cada uno un <b>% de la comisión</b>.</p>
@@ -125,8 +132,8 @@ const HELP = {
         <p>Cada colega se genera automáticamente como una <b>cuenta por pagar</b> (gasto pendiente) en <b>Gastos Mensuales</b>, en la moneda de la venta. La parte que no se reparte queda para la inmobiliaria: <b>Neto inmobiliaria = Comisión − suma de colegas</b>. Puedes tener varios colegas; si sumas más de 100% te avisa. Al editar o eliminar la venta, las cuentas por pagar pendientes se ajustan solas (las ya pagadas se conservan como historial).</p>
       </Section>
       <Section title="Totales">
-        <Formula>Total ventas = suma de precios del mes</Formula>
-        <Formula>Comisiones = suma del campo Comisión del mes</Formula>
+        <Formula>Volumen vendido = suma de precios del mes (referencia)</Formula>
+        <Formula>Comisiones = suma del campo Comisión del mes (esto entra al dashboard)</Formula>
       </Section>
     </>
   ),
