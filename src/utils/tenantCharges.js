@@ -21,6 +21,32 @@ import { cleanupOrphanSaleColegas } from './saleColegas.js';
 const OWNER_KEY = (tenantId) => `tenant_owner_${tenantId}`;
 const RENT_KEY = (tenantId) => `tenant_${tenantId}`;
 
+const dmy = (iso) => {
+  const [y, m, d] = String(iso || '').slice(0, 10).split('-');
+  return d ? `${d}/${m}/${y}` : iso;
+};
+
+// ------------------------------------------------------------------
+// Única fuente de verdad sobre si un inquilino genera renta en un mes.
+// La usan tanto el generador como el aviso del dashboard, para que no
+// puedan discrepar: si aquí se bloquea, allá se explica por qué.
+// Devuelve el motivo del bloqueo, o null si sí debe generar.
+// ------------------------------------------------------------------
+export function tenantBillingBlocker(t, year, month) {
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+
+  if ((Number(t?.monthlyRent) || 0) <= 0) return 'sin monto de renta';
+  if ((Number(t?.commissionPercent) || 0) <= 0) return 'falta el % de comisión';
+  if (t.contractStart && new Date(`${t.contractStart}T00:00:00`) > monthEnd) {
+    return `el contrato inicia el ${dmy(t.contractStart)}`;
+  }
+  if (t.contractEnd && new Date(`${t.contractEnd}T00:00:00`) < monthStart) {
+    return `contrato vencido el ${dmy(t.contractEnd)}`;
+  }
+  return null;
+}
+
 // 1) Genera los ingresos de renta pendientes del mes
 export async function ensureTenantIncomes(year, month) {
   try {
@@ -34,7 +60,6 @@ export async function ensureTenantIncomes(year, month) {
     const existingTenantIds = new Set(
       current.filter((r) => (r.kind || 'renta') === 'renta' && r.tenantId).map((r) => r.tenantId)
     );
-    const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
     const lastDay = monthEnd.getDate();
 
@@ -42,10 +67,9 @@ export async function ensureTenantIncomes(year, month) {
     for (const t of tenants) {
       const rent = Number(t.monthlyRent) || 0;
       const pct = Number(t.commissionPercent) || 0;
-      if (rent <= 0 || pct <= 0) continue;
       if (existingTenantIds.has(t.id)) continue;
-      if (t.contractStart && new Date(`${t.contractStart}T00:00:00`) > monthEnd) continue;
-      if (t.contractEnd && new Date(`${t.contractEnd}T00:00:00`) < monthStart) continue;
+      // Mismo criterio que explica el aviso del dashboard (ver tenantBillingBlocker)
+      if (tenantBillingBlocker(t, year, month)) continue;
 
       const day = Math.min(Math.max(Number(t.collectionDay) || 1, 1), lastDay);
       const ccy = t.currency === 'USD' ? 'USD' : 'DOP';

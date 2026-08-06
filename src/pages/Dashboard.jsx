@@ -1,5 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
-import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, Pencil } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, Pencil, UserX } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import HelpButton from '../components/HelpButton.jsx';
@@ -11,7 +11,7 @@ import { useSettings } from '../store/settings.js';
 import { monthName } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { yearTotals, seriesFromYear } from '../utils/calc.js';
-import { ensureTenantCharges } from '../utils/tenantCharges.js';
+import { ensureTenantCharges, tenantBillingBlocker } from '../utils/tenantCharges.js';
 import { db } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 
@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [series, setSeries] = useState([]);
   const [contractAlerts, setContractAlerts] = useState([]);
   const [pendingRentals, setPendingRentals] = useState([]);
+  const [notBilling, setNotBilling] = useState([]);
   const [view, setView] = useState('BOTH');
   const [rateModal, setRateModal] = useState(false);
   const [rateInput, setRateInput] = useState('');
@@ -89,6 +90,14 @@ export default function Dashboard() {
     }));
     // Las rentas del mes ya vienen dentro de `current`: no hace falta otra consulta
     setPendingRentals(current.rentals.filter((r) => r.status !== 'pagado').slice(0, 5));
+
+    // Inquilinos que este mes NO generan su renta automática. Antes se saltaban
+    // en silencio y el mes aparecía vacío sin explicación.
+    setNotBilling(
+      tenants
+        .map((t) => ({ id: t.id, name: t.name || `Inquilino #${t.id}`, reason: tenantBillingBlocker(t, year, month) }))
+        .filter((x) => x.reason)
+    );
   };
 
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
@@ -302,6 +311,27 @@ export default function Dashboard() {
             <Bell size={17} className="text-amber-500" aria-hidden="true" /> Alertas
           </h3>
           <div className="space-y-4 text-sm">
+            {notBilling.length > 0 && (
+              <div>
+                <p className="font-medium text-ink-600 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                  <UserX size={13} aria-hidden="true" /> No generan renta automática ({notBilling.length})
+                </p>
+                <ul className="space-y-1">
+                  {notBilling.slice(0, 6).map((t) => (
+                    <li key={t.id} className="flex justify-between items-center gap-2 bg-amber-50 ring-1 ring-inset ring-amber-600/20 rounded-lg px-2.5 py-2">
+                      <span className="truncate">{t.name}</span>
+                      <span className="text-xs text-amber-800 font-medium shrink-0">{t.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+                {notBilling.length > 6 && (
+                  <p className="text-xs text-ink-400 mt-1">y {notBilling.length - 6} más…</p>
+                )}
+                <p className="text-xs text-ink-500 mt-1.5">
+                  Complétalos en <b>Propiedades e Inquilinos</b> para que su renta se genere sola cada mes.
+                </p>
+              </div>
+            )}
             <div>
               <p className="font-medium text-ink-600 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
                 <Calendar size={13} aria-hidden="true" /> Contratos por vencer (30 días)

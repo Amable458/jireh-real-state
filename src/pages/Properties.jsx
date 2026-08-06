@@ -199,7 +199,7 @@ export default function Properties() {
     { key: 'commissionPercent', label: '% Comisión', render: (r) =>
       r.commissionPercent != null && r.commissionPercent !== ''
         ? <span className="badge-info">{Number(r.commissionPercent)}% = {fmtCur((Number(r.monthlyRent) || 0) * Number(r.commissionPercent) / 100, recCurrency(r))}</span>
-        : <span className="badge-slate" title="Sin % configurado: no genera ingreso automático">—</span>
+        : <span className="badge-warning" title="Sin % de comisión este inquilino no genera su renta automáticamente cada mes. Edítalo para completarlo.">Falta %</span>
     },
     { key: 'collectionDay', label: 'Día cobro', render: (r) => r.collectionDay ? `Día ${r.collectionDay}` : '—' },
     { key: 'managerName', label: 'Administrador', render: (r) =>
