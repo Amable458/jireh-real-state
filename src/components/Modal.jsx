@@ -5,10 +5,18 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
   const panelRef = useRef(null);
   const titleId = useId();
 
+  // Las páginas pasan onClose como función flecha en línea, así que cambia de
+  // identidad en cada render. Si estuviera en las dependencias del efecto de
+  // abajo, éste se desmontaría y remontaría con cada tecla: el foco saltaría
+  // del campo al panel y el formulario quedaría inservible. Guardarlo en una
+  // ref permite que el efecto dependa solo de `open`.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
   useEffect(() => {
     if (!open) return;
 
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => e.key === 'Escape' && onCloseRef.current?.();
     window.addEventListener('keydown', onKey);
 
     // Bloquea el scroll del fondo mientras el diálogo está abierto, compensando
@@ -30,7 +38,7 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
       // Devuelve el foco a donde estaba antes de abrir
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
     };
-  }, [open, onClose]);
+  }, [open]); // solo `open`: ver la nota sobre onCloseRef
 
   if (!open) return null;
 
