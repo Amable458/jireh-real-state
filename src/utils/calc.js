@@ -152,9 +152,12 @@ export async function yearMonthlySeries(year) {
   return seriesFromYear(await yearTotals(year));
 }
 
-export async function calcBonuses(year, month) {
-  const cfg = await db.distributionConfig.get('default');
-  const t = await monthlyTotals(year, month);
+// ------------------------------------------------------------------
+// Parte pura del cálculo de bonificaciones: recibe los totales ya
+// calculados en vez de volver a pedirlos. Permite que Reportes procese
+// doce meses con una sola lectura del año en vez de una por mes.
+// ------------------------------------------------------------------
+export function bonusesFrom(t, cfg, agents) {
   const bonusPercent = getBonusPercent(cfg);
   // El pool se calcula sobre el excedente consolidado en DOP
   if (!cfg || t.surplus <= 0) return { pool: 0, totalRentals: 0, byAgent: [], surplus: t.surplus, bonusPercent };
@@ -173,13 +176,21 @@ export async function calcBonuses(year, month) {
     byAgentMap.set(r.agentId, cur);
   }
   const totalRentals = Array.from(byAgentMap.values()).reduce((s, x) => s + x.count, 0);
-  const agents = await db.agents.toArray();
   const byAgent = Array.from(byAgentMap.values()).map((x) => {
     const a = agents.find((g) => g.id === x.agentId);
     const bonus = totalRentals > 0 ? (pool * x.count) / totalRentals : 0;
     return { ...x, agentName: a?.name || 'Desconocido', bonus };
   });
   return { pool, totalRentals, byAgent, surplus: t.surplus, bonusPercent };
+}
+
+export async function calcBonuses(year, month) {
+  const [cfg, t, agents] = await Promise.all([
+    db.distributionConfig.get('default'),
+    monthlyTotals(year, month),
+    db.agents.toArray()
+  ]);
+  return bonusesFrom(t, cfg, agents);
 }
 
 export { applyDistribution } from './distribution.js';

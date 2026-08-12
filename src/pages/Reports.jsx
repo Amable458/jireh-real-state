@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { FileText, FileSpreadsheet, Filter } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import PageHeader from '../components/PageHeader.jsx';
 import { db } from '../db/database.js';
 import { fmtMoney, fmtDate, monthsList, monthName, yearsList } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
-import { monthlyTotals, calcBonuses } from '../utils/calc.js';
+import { yearTotals, bonusesFrom } from '../utils/calc.js';
 import { applyDistribution } from '../utils/distribution.js';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
@@ -37,14 +34,27 @@ export default function Reports() {
 
   const generate = async () => {
     const periods = buildPeriods();
-    const cfg = await db.distributionConfig.get('default');
-    const months = [];
-    for (const p of periods) {
-      const t = await monthlyTotals(p.year, p.month);
-      const b = await calcBonuses(p.year, p.month);
-      const dist = applyDistribution(t.surplus, cfg);
-      months.push({ ...p, totals: t, bonuses: b, distribution: dist });
-    }
+    // Antes se pedían los totales mes por mes, y calcBonuses volvía a pedirlos
+    // por dentro: un reporte anual costaba ~120 consultas. Ahora se lee cada
+    // año implicado una sola vez (3 consultas) y el resto se calcula en memoria.
+    const [cfg, agents] = await Promise.all([
+      db.distributionConfig.get('default'),
+      db.agents.toArray()
+    ]);
+    const years = [...new Set(periods.map((p) => p.year))];
+    const totalsByYear = Object.fromEntries(
+      await Promise.all(years.map(async (y) => [y, await yearTotals(y)]))
+    );
+
+    const months = periods.map((p) => {
+      const t = totalsByYear[p.year][p.month - 1];
+      return {
+        ...p,
+        totals: t,
+        bonuses: bonusesFrom(t, cfg, agents),
+        distribution: applyDistribution(t.surplus, cfg)
+      };
+    });
     const totalIncome = months.reduce((s, x) => s + x.totals.totalIncome, 0);
     const totalExpenses = months.reduce((s, x) => s + x.totals.expensesAll, 0);
     const totalSurplus = totalIncome - totalExpenses;
@@ -59,8 +69,15 @@ export default function Reports() {
     return `${monthName(fromM)} ${fromY} – ${monthName(toM)} ${toY}`;
   };
 
-  const exportPDF = () => {
+  // jspdf y xlsx pesan ~680 kB juntos. Se cargan al pulsar el botón, no al
+  // abrir el módulo: así Reportes pinta de inmediato y solo paga ese peso
+  // quien realmente exporta.
+  const exportPDF = async () => {
     if (!data) return;
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable')
+    ]);
     const doc = new jsPDF();
     doc.setFontSize(16); doc.text('Jireh Real State — Reporte', 14, 16);
     doc.setFontSize(10); doc.text(`Periodo: ${periodLabel()}`, 14, 23);
@@ -121,8 +138,9 @@ export default function Reports() {
     doc.save(`Reporte_Jireh_${Date.now()}.pdf`);
   };
 
-  const exportXLSX = () => {
+  const exportXLSX = async () => {
     if (!data) return;
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const summary = [['Mes', 'Año', 'Ingresos', 'Gastos', 'Excedente', 'Comisiones']];
     data.months.forEach((m) => summary.push([monthName(m.month), m.year, m.totals.totalIncome, m.totals.expensesAll, m.totals.surplus, m.totals.commissions]));

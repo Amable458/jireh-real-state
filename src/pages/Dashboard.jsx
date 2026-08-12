@@ -1,5 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
-import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, Pencil, UserX } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Calendar, Bell, Pencil, UserX, History } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import HelpButton from '../components/HelpButton.jsx';
@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [contractAlerts, setContractAlerts] = useState([]);
   const [pendingRentals, setPendingRentals] = useState([]);
   const [notBilling, setNotBilling] = useState([]);
+  const [overdue, setOverdue] = useState([]);
   const [view, setView] = useState('BOTH');
   const [rateModal, setRateModal] = useState(false);
   const [rateInput, setRateInput] = useState('');
@@ -67,14 +68,14 @@ export default function Dashboard() {
 
   const canEditRate = hasRole('SuperAdmin', 'Admin');
 
-  const load = async () => {
-    await ensureTenantCharges(year, month); // genera rentas pendientes; el pago a propietario nace al cobrar
-
+  // Solo lee y pinta. Es lo que se ejecuta ante cambios en tiempo real.
+  const refresh = async () => {
     // Un solo recorrido del año: 3 consultas cubren tanto el mes actual como
     // la gráfica de 12 meses. Antes esto costaba ~52 consultas secuenciales.
-    const [months, tenants] = await Promise.all([
+    const [months, tenants, pendientes] = await Promise.all([
       yearTotals(year),
-      db.tenants.toArray()
+      db.tenants.toArray(),
+      db.expenses.where({ status: 'pendiente' }).toArray()
     ]);
 
     const current = months[month - 1] || months[0];
@@ -98,10 +99,27 @@ export default function Dashboard() {
         .map((t) => ({ id: t.id, name: t.name || `Inquilino #${t.id}`, reason: tenantBillingBlocker(t, year, month) }))
         .filter((x) => x.reason)
     );
+
+    // Gastos que quedaron sin pagar en meses ya cerrados. No entran en el
+    // balance de este mes (se contabilizan en el suyo), pero se siguen
+    // debiendo, así que conviene tenerlos a la vista.
+    setOverdue(
+      pendientes
+        .filter((e) => e.year < year || (e.year === year && e.month < month))
+        .sort((a, b) => (a.year - b.year) || (a.month - b.month))
+    );
+  };
+
+  // Genera lo que falte del mes y luego pinta. Solo al abrir o cambiar periodo.
+  const load = async () => {
+    await ensureTenantCharges(year, month); // genera rentas pendientes; el pago a propietario nace al cobrar
+    await refresh();
   };
 
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
-  useRealtimeTable(['rentals', 'sales', 'expenses', 'tenants', 'settings'], () => load());
+  // Ante cambios ajenos basta con releer: regenerar aquí repetía toda la
+  // generación mensual (~15 consultas) en cada evento.
+  useRealtimeTable(['rentals', 'sales', 'expenses', 'tenants', 'settings'], () => refresh());
 
   if (!totals) return <div className="text-ink-400">Cargando...</div>;
 
@@ -191,6 +209,13 @@ export default function Dashboard() {
   })();
   const hasCommission = rentSummary.DOP.comm > 0 || rentSummary.USD.comm > 0 || rentSummary.DOP.count > 0 || rentSummary.USD.count > 0;
   const salesCount = rentSummary.DOP.saleCount + rentSummary.USD.saleCount;
+
+  // Total adeudado de meses ya cerrados, por moneda
+  const overdueTotals = overdue.reduce((acc, e) => {
+    const c = recCurrency(e);
+    acc[c] = (acc[c] || 0) + (Number(e.monthly) || 0);
+    return acc;
+  }, {});
 
   // Datos de la gráfica según vista
   const chartData = series.map((s) => {
@@ -311,6 +336,33 @@ export default function Dashboard() {
             <Bell size={17} className="text-amber-500" aria-hidden="true" /> Alertas
           </h3>
           <div className="space-y-4 text-sm">
+            {overdue.length > 0 && (
+              <div>
+                <p className="font-medium text-ink-600 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                  <History size={13} aria-hidden="true" /> Gastos pendientes de meses anteriores ({overdue.length})
+                </p>
+                <div className="bg-red-50 ring-1 ring-inset ring-red-600/20 rounded-lg px-2.5 py-2 mb-1">
+                  <p className="text-base font-bold text-red-800 tnum leading-tight">
+                    {Object.entries(overdueTotals).map(([c, v]) => fmtCur(v, c)).join('  ·  ')}
+                  </p>
+                  <p className="text-[11px] text-red-700 mt-0.5">Acumulado sin pagar de meses ya cerrados</p>
+                </div>
+                <ul className="space-y-1">
+                  {overdue.slice(0, 4).map((e) => (
+                    <li key={e.id} className="flex justify-between items-center gap-2 text-xs bg-ink-50 rounded-lg px-2.5 py-1.5">
+                      <span className="truncate">
+                        <b className="text-ink-500">{monthName(e.month).slice(0, 3)}</b> {e.description}
+                      </span>
+                      <span className="tnum shrink-0 font-medium text-ink-700">{fmtCur(e.monthly, recCurrency(e))}</span>
+                    </li>
+                  ))}
+                </ul>
+                {overdue.length > 4 && (
+                  <p className="text-xs text-ink-400 mt-1">y {overdue.length - 4} más…</p>
+                )}
+              </div>
+            )}
+
             {notBilling.length > 0 && (
               <div>
                 <p className="font-medium text-ink-600 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">

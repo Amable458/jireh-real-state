@@ -96,9 +96,8 @@ export default function Rentals() {
     catch (e) { console.warn('[Jireh] Copia de ingresos recurrentes (posible duplicado concurrente):', e.message); }
   };
 
-  const load = async () => {
-    await ensureRecurring();
-    await ensureTenantCharges(year, month); // genera cobro de renta + pago a propietario
+  // Solo lee y pinta.
+  const refresh = async () => {
     const [r, p, t, a] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
       db.properties.toArray(),
@@ -107,8 +106,17 @@ export default function Rentals() {
     ]);
     setRows(r); setProps(p); setTenants(t); setAgents(a);
   };
+
+  // Genera lo que falte del mes y luego pinta. Solo al abrir o cambiar periodo.
+  const load = async () => {
+    await ensureRecurring();
+    await ensureTenantCharges(year, month); // genera cobro de renta + pago a propietario
+    await refresh();
+  };
+
   useEffect(() => { load(); }, [year, month]);
-  useRealtimeTable(['rentals', 'properties', 'tenants', 'agents'], () => load());
+  // Ante cambios ajenos basta con releer (ver nota en Dashboard).
+  useRealtimeTable(['rentals', 'properties', 'tenants', 'agents'], () => refresh());
 
   // Las rentas nacen automáticamente desde Inquilinos; aquí solo se
   // registran "otros ingresos" manualmente.

@@ -14,6 +14,7 @@ import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { ensureTenantCharges } from '../utils/tenantCharges.js';
+import { isAutoExpense } from '../utils/autoExpense.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const empty = () => ({
@@ -37,8 +38,11 @@ export default function Expenses() {
 
   const ensureRecurring = async () => {
     const current = await db.expenses.where({ year, month }).toArray();
-    // Los pagos a propietario auto-generados no cuentan: solo gastos manuales
-    const manual = current.filter((e) => !(e.recurringKey || '').startsWith('tenant_owner_'));
+    // Solo cuenta lo que registró una persona. Los gastos que genera el propio
+    // sistema (pago a propietario, bono de administración, desglose de
+    // contrato, reparto a colegas) NO significan que el mes ya esté trabajado:
+    // darlos por manuales impedía copiar los recurrentes del mes anterior.
+    const manual = current.filter((e) => !isAutoExpense(e));
     if (manual.length > 0) return;
     const prev = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
     const previous = await db.expenses.where({ year: prev.y, month: prev.m }).toArray();
@@ -54,14 +58,23 @@ export default function Expenses() {
     await logActivity(user.sub, user.username, 'expenses.autocopy', `${cloned.length} de ${prev.y}-${prev.m}`);
   };
 
+  // Solo relee y pinta. Barato.
+  const refresh = async () => {
+    setRows(await db.expenses.where({ year, month }).toArray());
+  };
+
+  // Genera lo que falte del mes y luego pinta. Caro (~15 consultas), así que
+  // se reserva para cuando abres el módulo o cambias de periodo.
   const load = async () => {
     await ensureRecurring();
     await ensureTenantCharges(year, month); // genera rentas pendientes y limpia pagos a propietario huérfanos
-    const r = await db.expenses.where({ year, month }).toArray();
-    setRows(r);
+    await refresh();
   };
+
   useEffect(() => { load(); }, [year, month]);
-  useRealtimeTable('expenses', () => load());
+  // Un cambio en otro dispositivo solo debe refrescar la vista: regenerar aquí
+  // repetía toda la generación en cada evento.
+  useRealtimeTable('expenses', () => refresh());
 
   const onAdd = () => {
     setEditId(null);
