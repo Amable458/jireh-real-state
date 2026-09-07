@@ -287,40 +287,60 @@ export default function OwnerReports() {
               <h4 className="text-[11px] uppercase tracking-wider font-semibold text-ink-500">Gastos realizados</h4>
               <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={addItem}><Plus size={14} /> Agregar gasto</button>
             </div>
-            <div className="table-wrap">
-              <table className="table tnum">
-                <thead>
-                  <tr>
-                    <th>Fecha de pago</th><th>Forma de pago</th><th>Descripción</th><th>Pagado a</th>
-                    <th className="text-right">Importe</th><th className="text-right">Acumulado</th><th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    let acc = 0;
-                    return form.items.map((it, idx) => {
-                      acc += Number(it.amount) || 0;
-                      return (
-                        <tr key={idx}>
-                          <td className="!p-1.5"><input type="date" className="input py-1.5" value={it.date} onChange={(e) => setItem(idx, { date: e.target.value })} /></td>
-                          <td className="!p-1.5">
-                            <select className="input py-1.5" value={it.method} onChange={(e) => setItem(idx, { method: e.target.value })}>
-                              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                            </select>
-                          </td>
-                          <td className="!p-1.5 min-w-[180px]"><input className="input py-1.5" placeholder="Ej. Reparación de tubería" value={it.description} onChange={(e) => setItem(idx, { description: e.target.value })} /></td>
-                          <td className="!p-1.5"><input className="input py-1.5" value={it.paidTo} onChange={(e) => setItem(idx, { paidTo: e.target.value })} /></td>
-                          <td className="!p-1.5"><input type="number" step="0.01" min="0" className="input py-1.5 text-right" value={it.amount} onChange={(e) => setItem(idx, { amount: e.target.value })} /></td>
-                          <td className="text-right font-medium bg-brand-50/60">{fmtCur(acc, ccy)}</td>
-                          <td className="!p-1.5 text-right">
-                            <button type="button" className="btn-ghost p-1.5 text-ink-400 hover:text-red-600" onClick={() => removeItem(idx)} aria-label="Quitar renglón"><X size={14} /></button>
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
+            {/* Una tarjeta por gasto. Siete columnas en una tabla no caben en el
+                ancho del modal y los campos quedaban recortados ("Jireh Real St"). */}
+            <div className="space-y-3">
+              {(() => {
+                let acc = 0;
+                return form.items.map((it, idx) => {
+                  acc += Number(it.amount) || 0;
+                  return (
+                    <div key={idx} className="relative rounded-xl border border-ink-200 bg-ink-50/40 p-3 pr-10">
+                      <button
+                        type="button"
+                        className="btn-ghost absolute top-2 right-2 p-1.5 text-ink-400 hover:text-red-600"
+                        onClick={() => removeItem(idx)}
+                        aria-label={`Quitar gasto ${idx + 1}`}
+                        title="Quitar"
+                      >
+                        <X size={15} />
+                      </button>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="label text-xs">Fecha de pago</label>
+                          <input type="date" className="input" value={it.date} onChange={(e) => setItem(idx, { date: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label text-xs">Forma de pago</label>
+                          <select className="input" value={it.method} onChange={(e) => setItem(idx, { method: e.target.value })}>
+                            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label text-xs">Importe ({ccy === 'USD' ? 'US$' : 'RD$'})</label>
+                          <input type="number" step="0.01" min="0" className="input text-right tnum" placeholder="0.00" value={it.amount} onChange={(e) => setItem(idx, { amount: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label text-xs">Acumulado</label>
+                          <div className="input bg-brand-50 border-brand-200 text-right font-semibold tnum text-ink-900 cursor-default select-none">
+                            {fmtCur(acc, ccy)}
+                          </div>
+                        </div>
+
+                        <div className="col-span-2">
+                          <label className="label text-xs">Descripción del gasto</label>
+                          <input className="input" placeholder="Ej. Reparación de tubería del baño principal" value={it.description} onChange={(e) => setItem(idx, { description: e.target.value })} />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="label text-xs">Pagado a</label>
+                          <input className="input" placeholder="Ej. Plomería Rodríguez / Ferretería Ochoa" value={it.paidTo} onChange={(e) => setItem(idx, { paidTo: e.target.value })} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             <div className="mt-3 ml-auto max-w-sm bg-ink-50 rounded-xl p-4 text-sm space-y-1.5 tnum">
