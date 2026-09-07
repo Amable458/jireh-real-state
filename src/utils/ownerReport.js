@@ -66,7 +66,15 @@ export async function buildOwnerReportDoc(report) {
   doc.setFillColor(...brand);
   doc.rect(0, 0, W, 30, 'F');
   if (logo) {
-    try { doc.addImage(logo, 'PNG', M, 6, 34, 18); } catch { /* sin logo */ }
+    try {
+      // Encaja el logo en una caja de 42×20 mm respetando su proporción real,
+      // en vez de estirarlo a un tamaño fijo.
+      const { width: iw, height: ih } = doc.getImageProperties(logo);
+      const boxW = 42, boxH = 20;
+      const k = Math.min(boxW / iw, boxH / ih);
+      const w = iw * k, h = ih * k;
+      doc.addImage(logo, 'PNG', M, 5 + (boxH - h) / 2, w, h);
+    } catch { /* sin logo */ }
   } else {
     doc.setTextColor(...ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
     doc.text('JIREH', M, 15);
@@ -89,8 +97,10 @@ export async function buildOwnerReportDoc(report) {
     doc.rect(x, y, w, boxH);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...ink);
     doc.text(label, x + 2, y + 6);
+    // Medir con la negrita todavía activa: es más ancha que la normal y
+    // medirla después hacía que el valor se montara sobre la etiqueta.
+    const lx = x + 2 + doc.getTextWidth(label) + 3;
     doc.setFont('helvetica', 'normal'); doc.setTextColor(50, 50, 50);
-    const lx = x + 2 + doc.getTextWidth(label) + 2;
     doc.text(pdfSafe(value || ''), lx, y + 6, { maxWidth: x + w - lx - 2 });
   };
 
