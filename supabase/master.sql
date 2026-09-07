@@ -1176,3 +1176,41 @@ do $$ begin
   raise notice '✓✓✓ MASTER.SQL COMPLETO — base de datos 100%% al día ✓✓✓';
   raise notice '======================================================';
 end $$;
+
+
+-- ============================================================
+-- SECCIÓN: Reporte de gastos de propiedad (migration_reporte_propietario.sql)
+-- ============================================================
+create table if not exists "ownerReports" (
+  id bigserial primary key,
+  "createdAt" timestamptz default now(),
+  "createdBy" text,
+  "propertyId" bigint,
+  "tenantId" bigint,
+  "ownerName" text,
+  "tenantName" text,
+  address text,
+  "apartmentNo" text,
+  "residentialName" text,
+  "periodFrom" date,
+  "periodTo" date,
+  "paymentDate" date,
+  "depositAccount" text,
+  "rentAmount" numeric default 0,
+  currency text default 'DOP',
+  "exchangeRate" numeric,
+  items jsonb default '[]'::jsonb,
+  notes text
+);
+
+create index if not exists "ownerReports_property_idx" on "ownerReports" ("propertyId");
+create index if not exists "ownerReports_period_idx" on "ownerReports" ("periodFrom", "periodTo");
+
+-- Misma política que el resto de tablas operativas
+alter table "ownerReports" enable row level security;
+drop policy if exists "anon all" on "ownerReports";
+create policy "anon all" on "ownerReports" for all to anon, authenticated using (true) with check (true);
+
+do $$ begin
+  raise notice '✓ Migración de reporte a propietario aplicada: tabla ownerReports.';
+end $$;

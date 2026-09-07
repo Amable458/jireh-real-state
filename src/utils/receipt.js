@@ -3,7 +3,7 @@ import { fmtDate, monthName } from './format.js';
 
 // La fuente estándar de jsPDF (WinAnsi) no soporta ciertos caracteres
 // Unicode. Los reemplazamos por equivalentes seguros.
-const pdfSafe = (s) => String(s ?? '')
+export const pdfSafe = (s) => String(s ?? '')
   .replace(/[−–]/g, '-')   // signo menos / en-dash → guión normal
   .replace(/✓/g, '')       // checkmark
   .replace(/[↻→]/g, '-')   // flechas

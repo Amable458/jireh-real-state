@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Home, Receipt, PieChart, Award,
-  Building2, FileBarChart, Users, Database, LogOut, KeyRound
+  Building2, FileBarChart, Users, Database, LogOut, KeyRound, ClipboardList
 } from 'lucide-react';
 import { useAuth } from '../store/auth.js';
 import { LogoMark } from './Logo.jsx';
@@ -16,6 +16,7 @@ const items = [
   { to: '/distribucion', label: 'Distribución de Fondos', icon: PieChart, roles: ['SuperAdmin', 'Admin'] },
   { to: '/bonificaciones', label: 'Bonificaciones', icon: Award, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/propiedades', label: 'Propiedades e Inquilinos', icon: Building2, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
+  { to: '/reporte-propietario', label: 'Reporte a Propietario', icon: ClipboardList, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/reportes', label: 'Reportes', icon: FileBarChart, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/usuarios', label: 'Usuarios', icon: Users, roles: ['SuperAdmin', 'Admin'] },
   { to: '/respaldo', label: 'Respaldo', icon: Database, roles: ['SuperAdmin'] }

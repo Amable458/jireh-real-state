@@ -3,7 +3,7 @@ import { supabase, isConfigured } from './supabaseClient.js';
 // Tablas del sistema
 const TABLES = [
   'users', 'rentals', 'sales', 'expenses', 'properties', 'tenants', 'agents',
-  'distributionConfig', 'activityLog', 'settings'
+  'distributionConfig', 'activityLog', 'settings', 'ownerReports'
 ];
 const STRING_PK_TABLES = new Set(['distributionConfig', 'settings']);
 

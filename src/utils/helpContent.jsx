@@ -18,6 +18,26 @@ const Note = ({ children }) => (
 );
 
 const HELP = {
+  ownerReports: (
+    <>
+      <Section title="¿Para qué sirve?">
+        <p>Para rendirle cuentas al <b>propietario</b> de un inmueble: qué se gastó en su propiedad durante un periodo, cuánta renta se cobró y cuánto le queda neto. Reproduce la plantilla de <i>Reporte de Gastos</i> de la empresa y se descarga en PDF listo para entregar.</p>
+      </Section>
+      <Section title="Cómo llenarlo">
+        <ul>
+          <li><b>Elegir inquilino</b> rellena propietario, dirección, residencial, renta y moneda desde el catálogo. Todo queda editable.</li>
+          <li><b>Periodo de gastos:</b> desde / hasta, fecha de pago y cuenta donde se deposita al propietario.</li>
+          <li><b>Total a la fecha — monto de renta:</b> lo cobrado al inquilino en ese periodo.</li>
+          <li><b>Gastos realizados:</b> un renglón por gasto (fecha, forma de pago, descripción, a quién se pagó, importe). El <b>Acumulado</b> se calcula solo.</li>
+        </ul>
+      </Section>
+      <Section title="Cálculo">
+        <Formula>Neto a entregar al propietario = Renta cobrada − Total gastado</Formula>
+        <p>Si los gastos superan la renta, el PDF lo muestra como <b>Saldo a favor de Jireh</b>.</p>
+      </Section>
+      <Note>Este módulo es informativo: no crea ingresos ni gastos en el sistema. Lo que registres aquí no altera el Dashboard ni la distribución de fondos.</Note>
+    </>
+  ),
   dashboard: (
     <>
       <Section title="¿Qué muestra el Dashboard?">

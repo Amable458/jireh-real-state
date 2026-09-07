@@ -16,6 +16,7 @@ const Expenses     = lazy(() => import('./pages/Expenses.jsx'));
 const Distribution = lazy(() => import('./pages/Distribution.jsx'));
 const Bonuses      = lazy(() => import('./pages/Bonuses.jsx'));
 const Properties   = lazy(() => import('./pages/Properties.jsx'));
+const OwnerReports = lazy(() => import('./pages/OwnerReports.jsx'));
 const Reports      = lazy(() => import('./pages/Reports.jsx'));
 const Users        = lazy(() => import('./pages/Users.jsx'));
 const Backup       = lazy(() => import('./pages/Backup.jsx'));
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/gastos" element={<Suspense fallback={<PageFallback />}><Expenses /></Suspense>} />
           <Route path="/bonificaciones" element={<Suspense fallback={<PageFallback />}><Bonuses /></Suspense>} />
           <Route path="/propiedades" element={<Suspense fallback={<PageFallback />}><Properties /></Suspense>} />
+          <Route path="/reporte-propietario" element={<Suspense fallback={<PageFallback />}><OwnerReports /></Suspense>} />
 
           <Route path="/distribucion" element={
             <ProtectedRoute roles={['SuperAdmin', 'Admin']}>
