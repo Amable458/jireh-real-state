@@ -1,0 +1,44 @@
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC = 3:00 AM hora de República Dominicana
+  workflow_dispatch:       # botón "Run workflow" para correrlo a mano
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Traer el repo privado de respaldos
+        uses: actions/checkout@v4
+        with:
+          repository: Amable458/jireh-backups
+          token: ${{ secrets.BACKUPS_REPO_TOKEN }}
+          path: backups-repo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Exportar la base de datos
+        env:
+          JIREH_DB_URL: https://ufjhcrgktfhvpuaocycx.supabase.co
+          JIREH_BACKUP_DB_KEY: ${{ secrets.JIREH_BACKUP_DB_KEY }}
+          OUT_DIR: backups-repo/backups
+        run: node scripts/backup.mjs
+
+      - name: Guardar en el repo privado
+        working-directory: backups-repo
+        run: |
+          git config user.name "jireh-backup-bot"
+          git config user.email "jireh-backup-bot@users.noreply.github.com"
+          git add backups
+          if git diff --cached --quiet; then echo "Sin cambios"; exit 0; fi
+          git commit -m "Respaldo $(date -u +%Y-%m-%d)"
+          git push

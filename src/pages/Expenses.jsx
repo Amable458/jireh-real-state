@@ -25,7 +25,9 @@ const empty = () => ({
 
 export default function Expenses() {
   const { year, month } = usePeriod();
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
+  // Borrar: solo Admin/SuperAdmin (la BD lo exige también)
+  const canDelete = hasRole('SuperAdmin', 'Admin');
   const { usdToDop } = useSettings();
   const [rows, setRows] = useState([]);
   const [open, setOpen] = useState(false);
@@ -173,7 +175,9 @@ export default function Expenses() {
             className="btn-ghost p-1.5 text-emerald-600"><CheckCircle2 size={14} /></button>
         )}
         <button onClick={() => onEdit(r)} title="Editar" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
-        <button onClick={() => setConfirm({ open: true, id: r.id })} title="Eliminar" className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
+        {canDelete && (
+          <button onClick={() => setConfirm({ open: true, id: r.id })} title="Eliminar" className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
+        )}
       </div>
     )}
   ];

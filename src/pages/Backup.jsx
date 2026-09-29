@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import Modal, { ConfirmModal } from '../components/Modal.jsx';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
-import { exportAll, importAll, logActivity } from '../db/database.js';
+import { exportAll, importAll, inspectBackup, currentCounts, logActivity } from '../db/database.js';
 import { useAuth } from '../store/auth.js';
 import { loadSampleData, clearTransactionalData } from '../utils/sampleData.js';
 import { validateDB, repairOrphans } from '../utils/validateDB.js';
@@ -22,14 +22,20 @@ export default function Backup() {
   const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState(null);
   const [validating, setValidating] = useState(false);
+  const [inspection, setInspection] = useState(null); // { check, current }
+  const [importing, setImporting] = useState(false);
 
-  const onExport = async () => {
-    const data = await exportAll(token);
+  const downloadJson = (data, name) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `jireh-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.href = url; a.download = name;
     a.click(); URL.revokeObjectURL(url);
+  };
+
+  const onExport = async () => {
+    const data = await exportAll(token);
+    downloadJson(data, `jireh-backup-${new Date().toISOString().slice(0, 10)}.json`);
     await logActivity(user.sub, user.username, 'backup.export', '');
     setMsg('Respaldo descargado');
     setTimeout(() => setMsg(''), 2500);
@@ -41,8 +47,12 @@ export default function Backup() {
     try {
       const text = await f.text();
       const json = JSON.parse(text);
-      if (!json.data) throw new Error('Archivo inválido');
+      // Revisar el archivo completo ANTES de ofrecer restaurarlo
+      const check = inspectBackup(json);
+      if (!check.ok) throw new Error(check.errors.join(' '));
+      const current = await currentCounts();
       setPendingPayload(json);
+      setInspection({ check, current });
       setConfirmImport(true);
     } catch (err) {
       setMsg('Error: ' + err.message);
@@ -109,14 +119,25 @@ export default function Backup() {
   };
 
   const doImport = async () => {
+    setImporting(true);
     try {
+      // Red de seguridad: el estado actual se descarga antes de reemplazarlo
+      const before = await exportAll(token);
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+      downloadJson(before, `jireh-pre-restauracion-${stamp}.json`);
+
       await importAll(pendingPayload, token);
       await logActivity(user.sub, user.username, 'backup.import', '');
+      setConfirmImport(false);
       setMsg('Restauración completada. Recargando...');
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
+      setConfirmImport(false);
       setMsg('Error: ' + err.message);
-      setTimeout(() => setMsg(''), 3000);
+      setTimeout(() => setMsg(''), 8000);
+    } finally {
+      setImporting(false);
+      setPendingPayload(null);
     }
   };
 
@@ -298,14 +319,47 @@ export default function Backup() {
         danger
       />
 
-      <ConfirmModal
+      <Modal
         open={confirmImport}
-        onClose={() => { setConfirmImport(false); setPendingPayload(null); }}
-        onConfirm={doImport}
+        onClose={() => { if (!importing) { setConfirmImport(false); setPendingPayload(null); } }}
         title="Restaurar respaldo"
-        message="Toda la información actual será reemplazada. ¿Desea continuar?"
-        danger
-      />
+        size="md"
+        footer={<>
+          <button className="btn-secondary" disabled={importing} onClick={() => { setConfirmImport(false); setPendingPayload(null); }}>Cancelar</button>
+          <button className="btn-danger" disabled={importing} onClick={doImport}>{importing ? 'Restaurando…' : 'Restaurar'}</button>
+        </>}
+      >
+        <div className="space-y-3 text-sm">
+          <p className="text-ink-600 leading-relaxed">
+            Las tablas incluidas en el archivo se <b>reemplazan por completo</b>. Antes de empezar se descargará
+            automáticamente una copia del estado actual. La restauración es <b>todo o nada</b>: si algo falla, no se cambia nada.
+          </p>
+          {inspection && (
+            <div className="table-wrap">
+              <table className="table tnum">
+                <thead><tr><th>Tabla</th><th className="text-right">Ahora</th><th className="text-right">En el archivo</th></tr></thead>
+                <tbody>
+                  {Object.entries(inspection.check.counts)
+                    .filter(([t]) => t !== 'users' && t !== 'activityLog')
+                    .map(([t, n]) => (
+                      <tr key={t}>
+                        <td>{t}</td>
+                        <td className="text-right">{inspection.current[t] ?? '—'}</td>
+                        <td className={`text-right font-medium ${n < (inspection.current[t] ?? 0) ? 'text-red-700' : ''}`}>{n}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {inspection?.check.warnings.length > 0 && (
+            <ul className="text-xs text-amber-800 bg-amber-50 ring-1 ring-inset ring-amber-600/20 rounded-lg px-3 py-2 space-y-0.5">
+              {inspection.check.warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+          )}
+          <p className="text-xs text-ink-500">La bitácora de actividad no se restaura: es historial y se conserva tal cual.</p>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { supabase, isConfigured } from './supabaseClient.js';
+import { setSessionToken, getSessionToken } from './sessionToken.js';
 
 // Tablas del sistema
 const TABLES = [
@@ -268,28 +269,36 @@ export async function initDB() {
   const created = await rpcEnsureDefaultUsers();
   if (created.length) console.info('[Jireh] Usuarios por defecto creados:', created.join(', '));
 
-  if ((await db.agents.count()) === 0) {
-    await db.agents.bulkAdd([
-      { name: 'María Reyes', active: 1 },
-      { name: 'Carlos Peña', active: 1 },
-      { name: 'Ana Jiménez', active: 1 }
-    ]);
-  }
-  if (!(await db.distributionConfig.get('default'))) {
-    await db.distributionConfig.put({
-      key: 'default',
-      categories: [
-        { id: 'bonosEquipo',   name: 'Bonos equipo',    percent: 25, system: true },
-        { id: 'ahorro',         name: 'Ahorro',          percent: 30 },
-        { id: 'gastosOficina',  name: 'Gastos oficina',  percent: 25 },
-        { id: 'administracion', name: 'Administración',  percent: 20 }
-      ]
-    });
-  }
-  if (!(await db.settings.get('app'))) {
-    await db.settings.put({
-      key: 'app', companyName: 'Jireh Real Estate', currency: 'DOP', contractAlertDays: 30
-    });
+  // Siembra de datos base. Solo con sesión: con RLS por sesión, sin token las
+  // lecturas vuelven vacías y el insert se rechazaría, tumbando el arranque
+  // de la pantalla de login. Nunca debe impedir que la app inicie.
+  if (!getSessionToken()) return;
+  try {
+    if ((await db.agents.count()) === 0) {
+      await db.agents.bulkAdd([
+        { name: 'María Reyes', active: 1 },
+        { name: 'Carlos Peña', active: 1 },
+        { name: 'Ana Jiménez', active: 1 }
+      ]);
+    }
+    if (!(await db.distributionConfig.get('default'))) {
+      await db.distributionConfig.put({
+        key: 'default',
+        categories: [
+          { id: 'bonosEquipo',   name: 'Bonos equipo',    percent: 25, system: true },
+          { id: 'ahorro',         name: 'Ahorro',          percent: 30 },
+          { id: 'gastosOficina',  name: 'Gastos oficina',  percent: 25 },
+          { id: 'administracion', name: 'Administración',  percent: 20 }
+        ]
+      });
+    }
+    if (!(await db.settings.get('app'))) {
+      await db.settings.put({
+        key: 'app', companyName: 'Jireh Real Estate', currency: 'DOP', contractAlertDays: 30
+      });
+    }
+  } catch (e) {
+    console.warn('[Jireh] Siembra de datos base omitida:', e.message);
   }
 }
 
@@ -297,6 +306,7 @@ export async function initDB() {
 let _currentToken = null;
 let _currentUser = null;
 export function setSessionContext(token, user) {
+  setSessionToken(token);
   _currentToken = token;
   _currentUser = user;
 }
@@ -304,12 +314,17 @@ export function getSessionContext() {
   return { token: _currentToken, user: _currentUser };
 }
 
+// Registra una acción en la bitácora. Va por la RPC log_activity, que toma el
+// usuario de la SESIÓN en el servidor: userId/username se conservan en la firma
+// para no tocar los llamadores, pero ya no deciden quién aparece como autor
+// (antes cualquiera podía insertar entradas a nombre de otro).
 export async function logActivity(userId, username, action, detail = '') {
   try {
-    await db.activityLog.add({
-      ts: new Date().toISOString(),
-      userId, username, action, detail
-    });
+    const { error } = await supabase.rpc('log_activity', { p_action: action, p_detail: String(detail ?? '') });
+    if (!error) return;
+    // Compatibilidad mientras no se haya corrido la migración que crea la RPC
+    if (!/log_activity|function|schema cache/i.test(error.message || '')) throw error;
+    await db.activityLog.add({ ts: new Date().toISOString(), userId, username, action, detail });
   } catch (e) {
     console.warn('[Jireh] No se pudo registrar actividad:', e.message);
   }
@@ -328,15 +343,68 @@ export async function exportAll(token) {
   return out;
 }
 
-export async function importAll(payload, token) {
-  if (!payload?.data) throw new Error('Archivo inválido');
+// La bitácora no se restaura desde archivo: es historial de solo agregar, y
+// restaurarla permitiría reescribir quién hizo qué.
+const NON_RESTORABLE = new Set(['users', 'activityLog']);
+
+// Revisa un respaldo SIN tocar nada. Devuelve errores (bloquean), avisos y
+// conteos por tabla para mostrarlos antes de confirmar.
+export function inspectBackup(payload) {
+  const errors = [];
+  const warnings = [];
+  const counts = {};
+  if (!payload || typeof payload !== 'object' || !payload.data || typeof payload.data !== 'object') {
+    return { ok: false, errors: ['El archivo no es un respaldo de Jireh (falta la sección "data").'], warnings, counts };
+  }
   for (const t of TABLES) {
-    if (payload.data[t] === undefined) continue;
-    if (t === 'users') {
-      if (token && payload.data.users.length) await rpcImportUsers(token, payload.data.users);
+    const v = payload.data[t];
+    if (v === undefined) {
+      if (!NON_RESTORABLE.has(t)) warnings.push(`"${t}" no viene en el archivo: se deja como está.`);
       continue;
     }
-    try { await db[t].clear(); } catch { /* tabla vacía */ }
-    if (payload.data[t].length) await db[t].bulkAdd(payload.data[t]);
+    if (!Array.isArray(v)) { errors.push(`"${t}" no es una lista de registros.`); continue; }
+    if (v.some((r) => !r || typeof r !== 'object' || Array.isArray(r))) { errors.push(`"${t}" contiene registros dañados.`); continue; }
+    counts[t] = v.length;
   }
+  const unknown = Object.keys(payload.data).filter((k) => !TABLES.includes(k));
+  if (unknown.length) warnings.push(`Se ignoran tablas desconocidas: ${unknown.join(', ')}.`);
+  return { ok: errors.length === 0, errors, warnings, counts };
+}
+
+// Conteo actual por tabla, para comparar con el archivo antes de restaurar.
+export async function currentCounts() {
+  const out = {};
+  await Promise.all(TABLES.filter((t) => !NON_RESTORABLE.has(t)).map(async (t) => {
+    try { out[t] = await db[t].count(); } catch { out[t] = null; }
+  }));
+  return out;
+}
+
+// Restaura un respaldo TODO O NADA vía la RPC jireh_restore (una transacción
+// en la BD que conserva los id y respeta las claves foráneas). Antes se hacía
+// aquí tabla por tabla con bulkAdd, que descartaba los id: los vínculos
+// (rentals.tenantId, etc.) quedaban rotos y un fallo a mitad dejaba tablas vacías.
+export async function importAll(payload, token) {
+  const check = inspectBackup(payload);
+  if (!check.ok) throw new Error('Respaldo inválido: ' + check.errors.join(' '));
+
+  const data = {};
+  for (const t of TABLES) {
+    if (NON_RESTORABLE.has(t) || payload.data[t] === undefined) continue;
+    data[t] = payload.data[t];
+  }
+
+  const { data: restored, error } = await supabase.rpc('jireh_restore', { p_data: data });
+  if (error) {
+    if (/jireh_restore|schema cache|could not find the function/i.test(error.message || '')) {
+      throw new Error('Falta la migración de seguridad (supabase/migration_rls_1_funciones.sql). No se modificó nada.');
+    }
+    throw new Error('La restauración falló y NO se aplicó ningún cambio: ' + error.message);
+  }
+
+  // Usuarios después, y solo si lo demás salió bien
+  if (token && Array.isArray(payload.data.users) && payload.data.users.length) {
+    await rpcImportUsers(token, payload.data.users);
+  }
+  return restored;
 }

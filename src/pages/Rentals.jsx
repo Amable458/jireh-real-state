@@ -47,6 +47,8 @@ export default function Rentals() {
   const { year, month } = usePeriod();
   const { user, hasRole } = useAuth();
   const canConfig = hasRole('SuperAdmin', 'Admin');
+  // Borrar registros financieros: solo Admin/SuperAdmin (la BD lo exige también)
+  const canDelete = hasRole('SuperAdmin', 'Admin');
   const [rows, setRows] = useState([]);
   const [props, setProps] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -362,7 +364,9 @@ export default function Rentals() {
             className="btn-ghost p-1.5 text-ink-700"><FileDown size={14} /></button>
         )}
         <button onClick={() => onEdit(r)} title="Editar" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
-        <button onClick={() => setConfirm({ open: true, id: r.id })} title="Eliminar" className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
+        {canDelete && (
+          <button onClick={() => setConfirm({ open: true, id: r.id })} title="Eliminar" className="btn-ghost p-1.5 text-red-600"><Trash2 size={14} /></button>
+        )}
       </div>
     )}
   ];
