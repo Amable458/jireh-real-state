@@ -17,6 +17,13 @@ function ensureClient() {
   }
 }
 
+// Contador de escrituras hechas desde este navegador. Sube con cada
+// add/update/delete/put/clear (salvo la bitácora). La generación mensual lo
+// usa para saber si algo cambió desde su última pasada sin consultar la BD.
+let _dataVersion = 0;
+const bump = (table) => { if (table !== 'activityLog') _dataVersion += 1; };
+export const getDataVersion = () => _dataVersion;
+
 // --- Builder encadenable ---
 function makeChained(table, applyFilter) {
   return {
@@ -40,6 +47,7 @@ function makeChained(table, applyFilter) {
     },
     async delete() {
       ensureClient();
+      bump(table);
       const { error } = await applyFilter(supabase.from(table).delete());
       if (error) throw error;
     }
@@ -71,6 +79,7 @@ function makeTable(table) {
     },
     async add(obj) {
       ensureClient();
+      bump(table);
       const ins = { ...obj };
       if (!isStringPk) delete ins.id;
       const { data, error } = await supabase.from(table).insert(ins).select(pk).single();
@@ -79,6 +88,7 @@ function makeTable(table) {
     },
     async bulkAdd(arr, opts) {
       ensureClient();
+      bump(table);
       if (!arr || !arr.length) return opts?.allKeys ? [] : undefined;
       const inserts = arr.map((o) => {
         const x = { ...o };
@@ -92,21 +102,25 @@ function makeTable(table) {
     },
     async update(key, patch) {
       ensureClient();
+      bump(table);
       const { error } = await supabase.from(table).update(patch).eq(pk, key);
       if (error) throw error;
     },
     async delete(key) {
       ensureClient();
+      bump(table);
       const { error } = await supabase.from(table).delete().eq(pk, key);
       if (error) throw error;
     },
     async put(obj) {
       ensureClient();
+      bump(table);
       const { error } = await supabase.from(table).upsert(obj, { onConflict: pk });
       if (error) throw error;
     },
     async clear() {
       ensureClient();
+      bump(table);
       const { error } = await supabase.from(table).delete().not(pk, 'is', null);
       if (error) throw error;
     },

@@ -84,11 +84,11 @@ export async function onContractIncomeStatusChange(income, prevStatus, fees) {
 }
 
 // Limpia cuentas por pagar cuyo ingreso ya no exista o no esté pagado.
-export async function cleanupContractPayables(year, month) {
+export async function cleanupContractPayables(year, month, ctx = {}) {
   try {
     const [rentals, expenses] = await Promise.all([
-      db.rentals.where({ year, month }).toArray(),
-      db.expenses.where({ year, month }).toArray()
+      ctx.rentals ?? db.rentals.where({ year, month }).toArray(),
+      ctx.expenses ?? db.expenses.where({ year, month }).toArray()
     ]);
     const paidContractIds = new Set(
       rentals.filter((r) => r.category === CONTRATO_CATEGORY && r.status === 'pagado').map((r) => r.id)

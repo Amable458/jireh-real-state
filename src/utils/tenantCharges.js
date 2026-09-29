@@ -1,4 +1,4 @@
-import { db } from '../db/database.js';
+import { db, getDataVersion } from '../db/database.js';
 import { fmtCur } from './currency.js';
 import { cleanupContractPayables } from './contractCharges.js';
 import { ensureAdminBonuses } from './adminBonus.js';
@@ -48,12 +48,12 @@ export function tenantBillingBlocker(t, year, month) {
 }
 
 // 1) Genera los ingresos de renta pendientes del mes
-export async function ensureTenantIncomes(year, month) {
+export async function ensureTenantIncomes(year, month, ctx = {}) {
   try {
     const [current, tenants, properties] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
-      db.tenants.toArray(),
-      db.properties.toArray()
+      ctx.tenants ?? db.tenants.toArray(),
+      ctx.properties ?? db.properties.toArray()
     ]);
     // Idempotencia robusta: si ya hay una renta de ese inquilino este mes
     // (sin importar su recurringKey o estado), no se genera otra.
@@ -101,11 +101,11 @@ export async function ensureTenantIncomes(year, month) {
 
 // 2) Elimina gastos de propietario cuya renta no esté pagada (o no exista).
 //    NO crea gastos — la creación es por evento (al marcar la renta pagada).
-export async function cleanupOwnerPayments(year, month) {
+export async function cleanupOwnerPayments(year, month, ctx = {}) {
   try {
     const [rentals, expenses] = await Promise.all([
-      db.rentals.where({ year, month }).toArray(),
-      db.expenses.where({ year, month }).toArray()
+      ctx.rentals ?? db.rentals.where({ year, month }).toArray(),
+      ctx.expenses ?? db.expenses.where({ year, month }).toArray()
     ]);
     const paidTenantIds = new Set(
       rentals.filter((r) => r.tenantId && r.status === 'pagado').map((r) => r.tenantId)
@@ -189,11 +189,11 @@ export async function onRentalStatusChange(rental, prevStatus) {
 
 // Elimina rentas auto-generadas (y sus pagos a propietario) de inquilinos
 // que YA NO existen. Solo borra las PENDIENTES — las pagadas son historial real.
-export async function cleanupOrphanRentals(year, month) {
+export async function cleanupOrphanRentals(year, month, ctx = {}) {
   try {
     const [rentals, tenants] = await Promise.all([
       db.rentals.where({ year, month }).toArray(),
-      db.tenants.toArray()
+      ctx.tenants ?? db.tenants.toArray()
     ]);
     const tenantIds = new Set(tenants.map((t) => t.id));
     for (const r of rentals) {
@@ -234,11 +234,73 @@ export async function deleteTenantCharges(tenantId) {
 }
 
 // Wrapper para las páginas: limpia huérfanas, genera pendientes, limpia pagos.
+// ------------------------------------------------------------------
+// Generación mensual completa. Antes: 14 lecturas secuenciales en cada
+// apertura de Dashboard, Ingresos o Gastos. Ahora:
+//  · lo que la generación nunca escribe (inquilinos, propiedades, ajustes,
+//    ventas) se lee una sola vez y en paralelo;
+//  · rentas y gastos se leen DESPUÉS de los pasos que los modifican, una vez;
+//  · si desde este navegador no se escribió nada desde la última pasada del
+//    mismo periodo (y no pasó un minuto), no se repite: navegar entre módulos
+//    ya no regenera;
+//  · llamadas simultáneas del mismo periodo comparten una sola ejecución.
+// Devuelve true si escribió algo (para que la página vuelva a pintar).
+// ------------------------------------------------------------------
+const MEMO_TTL_MS = 60_000;
+let lastRun = null;            // { key, version, at }
+const inFlight = new Map();    // 'año-mes' -> Promise<boolean>
+
 export async function ensureTenantCharges(year, month) {
-  await cleanupOrphanRentals(year, month);
-  await ensureTenantIncomes(year, month);
-  await cleanupOwnerPayments(year, month);
-  await cleanupContractPayables(year, month);
-  await ensureAdminBonuses(year, month);
-  await cleanupOrphanSaleColegas(year, month);
+  const key = `${year}-${month}`;
+  if (inFlight.has(key)) return inFlight.get(key);
+  if (lastRun && lastRun.key === key && lastRun.version === getDataVersion()
+      && Date.now() - lastRun.at < MEMO_TTL_MS) {
+    return false;
+  }
+
+  const run = (async () => {
+    const before = getDataVersion();
+    let shared;
+    try {
+      const [tenants, properties, settings, sales] = await Promise.all([
+        db.tenants.toArray(),
+        db.properties.toArray(),
+        db.settings.get('app'),
+        db.sales.where({ year, month }).toArray()
+      ]);
+      shared = { tenants, properties, settings, sales };
+    } catch (e) {
+      // Sin estas lecturas no se genera nada. Ojo: pasar ajustes vacíos haría
+      // que el bono de administración se calculara en 0 y se borrara.
+      console.warn('[Jireh] ensureTenantCharges (lectura inicial):', e.message);
+      return false;
+    }
+
+    await cleanupOrphanRentals(year, month, shared);
+    await ensureTenantIncomes(year, month, shared);
+
+    // Cada paso siguiente solo toca gastos de su propio prefijo (tenant_owner_,
+    // contract_, admin_bonus_, sale_colega_): comparten esta misma lectura.
+    let ctx;
+    try {
+      const [rentals, expenses] = await Promise.all([
+        db.rentals.where({ year, month }).toArray(),
+        db.expenses.where({ year, month }).toArray()
+      ]);
+      ctx = { ...shared, rentals, expenses };
+    } catch (e) {
+      console.warn('[Jireh] ensureTenantCharges (rentas/gastos):', e.message);
+      return getDataVersion() !== before;
+    }
+    await cleanupOwnerPayments(year, month, ctx);
+    await cleanupContractPayables(year, month, ctx);
+    await ensureAdminBonuses(year, month, ctx);
+    await cleanupOrphanSaleColegas(year, month, ctx);
+
+    lastRun = { key, version: getDataVersion(), at: Date.now() };
+    return lastRun.version !== before;
+  })();
+
+  inFlight.set(key, run);
+  try { return await run; } finally { inFlight.delete(key); }
 }

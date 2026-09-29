@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Building2, Users, UserCheck, Power, Settings, UserCog } from 'lucide-react';
+import { Plus, Edit2, Trash2, Building2, Users, UserCheck, Power, Settings, UserCog, ClipboardCheck, ChevronDown } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import DataTable from '../components/DataTable.jsx';
 import Modal, { ConfirmModal } from '../components/Modal.jsx';
@@ -11,7 +11,7 @@ import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
-import { deleteTenantCharges } from '../utils/tenantCharges.js';
+import { deleteTenantCharges, tenantBillingBlocker } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 
 const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', rent: '', sale: '', status: 'disponible', notes: '' });
@@ -26,6 +26,8 @@ const agentEmpty = () => ({ name: '', phone: '', email: '', commission: '', note
 export default function Properties() {
   const { user, token, hasRole } = useAuth();
   const canConfig = hasRole('SuperAdmin', 'Admin');
+  // Borrar: solo Admin/SuperAdmin (la BD lo exige también; para Operativo fallaría en silencio)
+  const canDelete = hasRole('SuperAdmin', 'Admin');
   const { usdToDop, adminBonusPerTenant, setAdminBonusPerTenant } = useSettings();
   const [tab, setTab] = useState('properties');
   const [properties, setProperties] = useState([]);
@@ -53,14 +55,24 @@ export default function Properties() {
   const [bonusInput, setBonusInput] = useState('');
   const [bonusErr, setBonusErr] = useState('');
 
+  // Las tres tablas en paralelo (antes, una tras otra).
+  const refresh = async () => {
+    const [p, t, a] = await Promise.all([
+      db.properties.toArray(),
+      db.tenants.toArray(),
+      db.agents.toArray()
+    ]);
+    setProperties(p); setTenants(t); setAgents(a);
+  };
+  // La lista de colaboradores casi nunca cambia: solo al abrir el módulo.
   const load = async () => {
-    setProperties(await db.properties.toArray());
-    setTenants(await db.tenants.toArray());
-    setAgents(await db.agents.toArray());
-    try { setStaff(await rpcListUsers(token)); } catch { /* sesión aún cargando */ }
+    await Promise.all([
+      refresh(),
+      rpcListUsers(token).then(setStaff).catch(() => { /* sesión aún cargando */ })
+    ]);
   };
   useEffect(() => { load(); /* eslint-disable-line */ }, []);
-  useRealtimeTable(['properties', 'tenants', 'agents'], () => load());
+  useRealtimeTable(['properties', 'tenants', 'agents'], () => refresh());
 
   const saveProp = async (e) => {
     e.preventDefault();
@@ -185,11 +197,57 @@ export default function Properties() {
     { key: 'status', label: 'Estado', render: (r) => <span className="badge-info">{r.status}</span> },
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
-        <button className="btn-ghost p-1.5" onClick={() => { setPEdit(r.id); setPForm({ ...propEmpty(), ...r, rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '' }); setPOpen(true); }}><Edit2 size={14} /></button>
-        <button className="btn-ghost p-1.5 text-red-600" onClick={() => setConfirm({ open: true, kind: 'property', id: r.id })}><Trash2 size={14} /></button>
+        <button className="btn-ghost p-1.5" onClick={() => editProperty(r)}><Edit2 size={14} /></button>
+        {canDelete && (
+          <button className="btn-ghost p-1.5 text-red-600" onClick={() => setConfirm({ open: true, kind: 'property', id: r.id })}><Trash2 size={14} /></button>
+        )}
       </div>
     )}
   ];
+
+  // Abrir editores (los usan las tablas y el panel de calidad de datos)
+  const editTenant = (r) => {
+    setTEdit(r.id);
+    setTErr('');
+    setTForm({
+      ...tenantEmpty(), ...r,
+      monthlyRent: r.monthlyRent ?? '',
+      currency: r.currency || 'DOP',
+      exchangeRate: r.exchangeRate ?? '',
+      commissionPercent: r.commissionPercent ?? '',
+      collectionDay: r.collectionDay ?? 1,
+      contractEnd: r.contractEnd || '',
+      managerId: r.managerId ?? ''
+    });
+    setTOpen(true);
+  };
+  const editProperty = (r) => {
+    setPEdit(r.id);
+    setPForm({ ...propEmpty(), ...r, rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '' });
+    setPOpen(true);
+  };
+
+  // ---------- Calidad de datos ----------
+  // Todo lo que impide que el sistema trabaje solo, en un único lugar.
+  const now = new Date();
+  const quality = [
+    ...tenants.map((t) => {
+      const issues = [];
+      const blocker = tenantBillingBlocker(t, now.getFullYear(), now.getMonth() + 1);
+      if (blocker) issues.push({ level: 'error', text: `No genera renta: ${blocker}` });
+      if (t.contractStart && t.contractEnd && t.contractEnd <= t.contractStart) {
+        issues.push({ level: 'error', text: 'Fechas de contrato inválidas (fin ≤ inicio)' });
+      }
+      if (!t.propertyId) issues.push({ level: 'warning', text: 'Sin propiedad vinculada' });
+      return { kind: 'tenant', id: t.id, name: t.name, row: t, issues };
+    }),
+    ...properties.map((pr) => ({
+      kind: 'property', id: pr.id, name: pr.name, row: pr,
+      issues: (pr.owner || '').trim() ? [] : [{ level: 'warning', text: 'Sin propietario' }]
+    }))
+  ].filter((x) => x.issues.length)
+   .sort((a, b) => b.issues.filter((i) => i.level === 'error').length - a.issues.filter((i) => i.level === 'error').length);
+  const [qualityOpen, setQualityOpen] = useState(true);
 
   const tenantCols = [
     { key: 'name', label: 'Inquilino' },
@@ -219,22 +277,10 @@ export default function Properties() {
     }},
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
-        <button className="btn-ghost p-1.5" onClick={() => {
-          setTEdit(r.id);
-          setTErr('');
-          setTForm({
-            ...tenantEmpty(), ...r,
-            monthlyRent: r.monthlyRent ?? '',
-            currency: r.currency || 'DOP',
-            exchangeRate: r.exchangeRate ?? '',
-            commissionPercent: r.commissionPercent ?? '',
-            collectionDay: r.collectionDay ?? 1,
-            contractEnd: r.contractEnd || '',
-            managerId: r.managerId ?? ''
-          });
-          setTOpen(true);
-        }}><Edit2 size={14} /></button>
-        <button className="btn-ghost p-1.5 text-red-600" onClick={() => setConfirm({ open: true, kind: 'tenant', id: r.id })}><Trash2 size={14} /></button>
+        <button className="btn-ghost p-1.5" onClick={() => editTenant(r)}><Edit2 size={14} /></button>
+        {canDelete && (
+          <button className="btn-ghost p-1.5 text-red-600" onClick={() => setConfirm({ open: true, kind: 'tenant', id: r.id })}><Trash2 size={14} /></button>
+        )}
       </div>
     )}
   ];
@@ -253,7 +299,9 @@ export default function Properties() {
         <button className="btn-ghost p-1.5" title={r.active ? 'Desactivar' : 'Activar'} onClick={() => toggleAgentActive(r)}>
           <Power size={14} className={r.active ? 'text-amber-600' : 'text-emerald-600'} />
         </button>
-        <button className="btn-ghost p-1.5 text-red-600" title="Eliminar" onClick={() => setConfirm({ open: true, kind: 'agent', id: r.id })}><Trash2 size={14} /></button>
+        {canDelete && (
+          <button className="btn-ghost p-1.5 text-red-600" title="Eliminar" onClick={() => setConfirm({ open: true, kind: 'agent', id: r.id })}><Trash2 size={14} /></button>
+        )}
       </div>
     )}
   ];
@@ -265,6 +313,52 @@ export default function Properties() {
         subtitle="Catálogo de inmuebles y relaciones contractuales"
         actions={<HelpButton content={HELP.properties} />}
       />
+
+      {quality.length > 0 && (
+        <div className="card mb-5 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setQualityOpen((o) => !o)}
+            className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-ink-50/60 transition-colors"
+            aria-expanded={qualityOpen}
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="p-1.5 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                <ClipboardCheck size={16} aria-hidden="true" />
+              </span>
+              <span>
+                <span className="font-semibold text-ink-900">Calidad de datos</span>
+                <span className="text-sm text-ink-500"> · {quality.length} registro(s) por completar</span>
+              </span>
+            </span>
+            <ChevronDown size={18} className={`text-ink-400 transition-transform duration-200 ${qualityOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+          {qualityOpen && (
+            <ul className="border-t border-ink-100 divide-y divide-ink-100">
+              {quality.map((q) => (
+                <li key={`${q.kind}-${q.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5">
+                  <span className="text-[11px] uppercase tracking-wide text-ink-400 w-20 shrink-0">
+                    {q.kind === 'tenant' ? 'Inquilino' : 'Propiedad'}
+                  </span>
+                  <span className="font-medium text-ink-800 min-w-[140px]">{q.name}</span>
+                  <span className="flex flex-wrap gap-1.5 flex-1">
+                    {q.issues.map((i) => (
+                      <span key={i.text} className={i.level === 'error' ? 'badge-danger' : 'badge-warning'}>{i.text}</span>
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-secondary px-3 py-1.5 text-xs"
+                    onClick={() => (q.kind === 'tenant' ? editTenant(q.row) : editProperty(q.row))}
+                  >
+                    <Edit2 size={13} /> Corregir
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="card card-body">
         <div className="flex items-center justify-between border-b border-ink-200 mb-4">

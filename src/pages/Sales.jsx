@@ -46,8 +46,8 @@ export default function Sales() {
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [curFilter, setCurFilter] = useState('all');
 
-  const load = async () => {
-    await cleanupOrphanSaleColegas(year, month);
+  // Solo lee y pinta (lo que dispara el tiempo real)
+  const refresh = async () => {
     const [s, p, a] = await Promise.all([
       db.sales.where({ year, month }).toArray(),
       db.properties.toArray(),
@@ -55,8 +55,14 @@ export default function Sales() {
     ]);
     setRows(s); setProps(p); setAgents(a);
   };
+  // Al abrir o cambiar de periodo: pinta y limpia cuentas por pagar a colegas
+  // de ventas ya borradas (son gastos: no cambian esta tabla, no hay que repintar).
+  const load = async () => {
+    await refresh();
+    await cleanupOrphanSaleColegas(year, month);
+  };
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
-  useRealtimeTable(['sales', 'properties', 'agents', 'expenses'], () => load());
+  useRealtimeTable(['sales', 'properties', 'agents'], () => refresh());
 
   const onAdd = () => { setEditId(null); setSaveErr(''); setForm(empty()); setOpen(true); };
   const onEdit = (r) => {

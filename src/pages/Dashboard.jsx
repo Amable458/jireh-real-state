@@ -44,6 +44,40 @@ function StatCard({ icon: Icon, label, value, tone = 'neutral', sub, negative })
   );
 }
 
+// Esqueleto con la misma forma que el Dashboard: cabecera, selector de
+// moneda, tarjetas y gráfica. Evita el salto de diseño cuando llegan los datos.
+function DashboardSkeleton() {
+  const bar = 'rounded-md bg-ink-100 animate-pulse';
+  return (
+    <div aria-busy="true" aria-label="Cargando el dashboard">
+      <div className="mb-6 space-y-2">
+        <div className={`${bar} h-7 w-44`} />
+        <div className={`${bar} h-4 w-28`} />
+      </div>
+      <div className={`${bar} h-10 w-80 max-w-full mb-5 rounded-xl`} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="card card-body space-y-3">
+            <div className={`${bar} h-3 w-24`} />
+            <div className={`${bar} h-6 w-36`} />
+            <div className={`${bar} h-3 w-40`} />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="card card-body lg:col-span-2">
+          <div className={`${bar} h-4 w-56 mb-4`} />
+          <div className={`${bar} h-[300px] w-full rounded-lg`} />
+        </div>
+        <div className="card card-body space-y-3">
+          <div className={`${bar} h-4 w-24 mb-2`} />
+          {Array.from({ length: 4 }, (_, i) => <div key={i} className={`${bar} h-9 w-full rounded-lg`} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const VIEWS = [
   { value: 'DOP', label: 'RD$' },
   { value: 'USD', label: 'US$' },
@@ -110,10 +144,11 @@ export default function Dashboard() {
     );
   };
 
-  // Genera lo que falte del mes y luego pinta. Solo al abrir o cambiar periodo.
+  // Pinta de inmediato con lo que ya hay; luego genera lo que falte del mes
+  // (rentas pendientes, bonos...) y solo repinta si la generación escribió algo.
   const load = async () => {
-    await ensureTenantCharges(year, month); // genera rentas pendientes; el pago a propietario nace al cobrar
     await refresh();
+    if (await ensureTenantCharges(year, month)) await refresh();
   };
 
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
@@ -121,7 +156,7 @@ export default function Dashboard() {
   // generación mensual (~15 consultas) en cada evento.
   useRealtimeTable(['rentals', 'sales', 'expenses', 'tenants', 'settings'], () => refresh());
 
-  if (!totals) return <div className="text-ink-400">Cargando...</div>;
+  if (!totals) return <DashboardSkeleton />;
 
   const saveRate = async () => {
     setRateErr('');

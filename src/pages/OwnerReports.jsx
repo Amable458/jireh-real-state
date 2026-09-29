@@ -12,6 +12,7 @@ import { db, logActivity } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur } from '../utils/currency.js';
+import { toast } from '../store/toast.js';
 import {
   PAYMENT_METHODS, emptyItem, normalizeItems, itemsTotal, generateOwnerReportPDF
 } from '../utils/ownerReport.js';
@@ -100,6 +101,20 @@ export default function OwnerReports() {
     });
   };
 
+  // Elegir la propiedad rellena dueño, dirección y residencial (útil cuando el
+  // inquilino no está vinculado o el reporte es de una propiedad desocupada).
+  const pickProperty = (id) => {
+    const p = props.find((x) => String(x.id) === String(id));
+    if (!p) { setForm({ ...form, propertyId: '' }); return; }
+    setForm({
+      ...form,
+      propertyId: p.id,
+      ownerName: p.owner || form.ownerName,
+      address: p.address || form.address,
+      residentialName: p.name || form.residentialName
+    });
+  };
+
   const setItem = (idx, patch) => {
     const items = form.items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
     setForm({ ...form, items });
@@ -179,7 +194,7 @@ export default function OwnerReports() {
       await generateOwnerReportPDF(r);
       if (r.id) await logActivity(user.sub, user.username, 'ownerReport.pdf', `id=${r.id}`);
     } catch (ex) {
-      alert(ex?.message || 'No se pudo generar el PDF');
+      toast.error(ex?.message || 'No se pudo generar el PDF');
     } finally {
       setPdfBusy(null);
     }
@@ -254,11 +269,18 @@ export default function OwnerReports() {
           <section>
             <h4 className="text-[11px] uppercase tracking-wider font-semibold text-ink-500 mb-2">Datos del residente</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="md:col-span-2">
-                <label className="label">Inquilino (rellena los datos automáticamente)</label>
+              <div>
+                <label className="label">Inquilino (rellena los datos)</label>
                 <select className="input" value={form.tenantId} onChange={(e) => pickTenant(e.target.value)}>
                   <option value="">— Elegir inquilino —</option>
                   {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}{t.propertyName ? ` · ${t.propertyName}` : ''}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Propiedad (rellena dueño y dirección)</label>
+                <select className="input" value={form.propertyId} onChange={(e) => pickProperty(e.target.value)} disabled={props.length === 0}>
+                  <option value="">{props.length === 0 ? 'No hay propiedades registradas' : '— Elegir propiedad —'}</option>
+                  {props.map((p) => <option key={p.id} value={p.id}>{p.name}{p.owner ? ` · ${p.owner}` : ''}</option>)}
                 </select>
               </div>
               <div><label className="label">Nombre del propietario</label><input className="input" value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} /></div>

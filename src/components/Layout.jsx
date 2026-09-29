@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar.jsx';
+import Toaster from './Toaster.jsx';
 import { LogoMark } from './Logo.jsx';
 
 export default function Layout() {
@@ -26,6 +27,7 @@ export default function Layout() {
           </div>
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }

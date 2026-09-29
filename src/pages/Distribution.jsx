@@ -27,10 +27,18 @@ export default function Distribution() {
   const [deleteIdx, setDeleteIdx] = useState(null);
   const [msg, setMsg] = useState('');
 
+  // Lee configuración y totales en paralelo. Si el usuario está editando
+  // porcentajes (borrador distinto de lo guardado), NO se toca su borrador:
+  // antes cualquier gasto registrado en otro equipo reiniciaba el formulario.
   const load = async () => {
-    const c = normalizeConfig(await db.distributionConfig.get('default'));
-    setCfg(c); setDraft(c);
-    setTotals(await monthlyTotals(year, month));
+    const [raw, t] = await Promise.all([
+      db.distributionConfig.get('default'),
+      monthlyTotals(year, month)
+    ]);
+    const c = normalizeConfig(raw);
+    setDraft((d) => (!d || !cfg || JSON.stringify(d) === JSON.stringify(cfg) ? c : d));
+    setCfg(c);
+    setTotals(t);
   };
   useEffect(() => { load(); /* eslint-disable-line */ }, [year, month]);
   useRealtimeTable(['distributionConfig', 'rentals', 'sales', 'expenses'], () => load());

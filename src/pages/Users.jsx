@@ -12,6 +12,7 @@ import {
 } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtDateTime } from '../utils/format.js';
+import { toast } from '../store/toast.js';
 
 const ROLES = ['SuperAdmin', 'Admin', 'Operativo'];
 const empty = () => ({ username: '', fullName: '', role: 'Operativo', password: '' });
@@ -79,7 +80,7 @@ export default function Users() {
       await rpcToggleBlock(token, u.id);
       await load();
     } catch (ex) {
-      alert(ex.message || 'Error al cambiar estado');
+      toast.error(ex.message || 'Error al cambiar estado');
     }
   };
 
@@ -88,7 +89,7 @@ export default function Users() {
       await rpcDeleteUser(token, id);
       await load();
     } catch (ex) {
-      alert(ex.message || 'Error al eliminar usuario');
+      toast.error(ex.message || 'Error al eliminar usuario');
     }
   };
 

@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 export default function Modal({ open, onClose, title, children, size = 'md', footer }) {
   const panelRef = useRef(null);
@@ -83,17 +83,38 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
 }
 
 export function ConfirmModal({ open, onClose, onConfirm, title = 'Confirmar acción', message, danger }) {
+  // Espera a que la acción termine y bloquea los botones mientras tanto.
+  // Antes el modal se cerraba al instante: un segundo clic (o la lentitud de
+  // la red) podía ejecutar la acción dos veces.
+  const [busy, setBusy] = useState(false);
+  const running = useRef(false); // guarda inmediata: el estado tarda un render
+
+  const confirm = async () => {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    try {
+      await onConfirm?.();
+    } catch (e) {
+      console.error('[Jireh] Acción confirmada falló:', e);
+    } finally {
+      running.current = false;
+      setBusy(false);
+      onClose?.();
+    }
+  };
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={busy ? undefined : onClose}
       title={title}
       size="sm"
       footer={
         <>
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className={danger ? 'btn-danger' : 'btn-primary'} onClick={() => { onConfirm?.(); onClose?.(); }}>
-            Confirmar
+          <button className="btn-secondary" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button className={danger ? 'btn-danger' : 'btn-primary'} onClick={confirm} disabled={busy}>
+            {busy ? 'Procesando…' : 'Confirmar'}
           </button>
         </>
       }

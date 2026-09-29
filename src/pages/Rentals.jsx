@@ -8,7 +8,7 @@ import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
-import { db, logActivity } from '../db/database.js';
+import { db, logActivity, getDataVersion } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
@@ -18,6 +18,7 @@ import { onContractIncomeStatusChange, removeContractPayables, isContractIncome 
 import { CONTRATO_CATEGORY, normalizeFees, feesTotal } from '../utils/contractFees.js';
 import { generateReceiptPDF } from '../utils/receipt.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
+import { toast } from '../store/toast.js';
 
 const STATUS = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -109,11 +110,14 @@ export default function Rentals() {
     setRows(r); setProps(p); setTenants(t); setAgents(a);
   };
 
-  // Genera lo que falte del mes y luego pinta. Solo al abrir o cambiar periodo.
+  // Pinta de inmediato; luego genera lo que falte del mes (recurrentes, cobro
+  // de renta) y repinta solo si se escribió algo.
   const load = async () => {
-    await ensureRecurring();
-    await ensureTenantCharges(year, month); // genera cobro de renta + pago a propietario
     await refresh();
+    const v = getDataVersion();
+    await ensureRecurring();
+    await ensureTenantCharges(year, month);
+    if (getDataVersion() !== v) await refresh();
   };
 
   useEffect(() => { load(); }, [year, month]);
@@ -285,7 +289,7 @@ export default function Rentals() {
       }
       await load();
     } catch (ex) {
-      alert(ex.message || 'Error al marcar como pagado');
+      toast.error(ex.message || 'Error al marcar como pagado');
     }
   };
 

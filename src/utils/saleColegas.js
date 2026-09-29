@@ -105,11 +105,11 @@ export async function removeSaleColegaPayables(sale) {
 }
 
 // Limpia cuentas por pagar cuya venta ya no exista
-export async function cleanupOrphanSaleColegas(year, month) {
+export async function cleanupOrphanSaleColegas(year, month, ctx = {}) {
   try {
     const [sales, expenses] = await Promise.all([
-      db.sales.where({ year, month }).toArray(),
-      db.expenses.where({ year, month }).toArray()
+      ctx.sales ?? db.sales.where({ year, month }).toArray(),
+      ctx.expenses ?? db.expenses.where({ year, month }).toArray()
     ]);
     const saleIds = new Set(sales.map((s) => s.id));
     const payables = expenses.filter((e) => (e.recurringKey || '').startsWith(PREFIX));

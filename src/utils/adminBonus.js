@@ -37,14 +37,14 @@ function countActiveTenantsByManager(tenants, year, month) {
 
 // Genera/actualiza/elimina el gasto pendiente de bono por colaborador,
 // según cuántos inquilinos administra activamente este mes.
-export async function ensureAdminBonuses(year, month) {
+export async function ensureAdminBonuses(year, month, ctx = {}) {
   try {
     const [tenants, expenses] = await Promise.all([
-      db.tenants.toArray(),
-      db.expenses.where({ year, month }).toArray()
+      ctx.tenants ?? db.tenants.toArray(),
+      ctx.expenses ?? db.expenses.where({ year, month }).toArray()
     ]);
 
-    const s = await db.settings.get('app');
+    const s = 'settings' in ctx ? ctx.settings : await db.settings.get('app');
     const perTenant = Number(s?.adminBonusPerTenant) || 0;
 
     const byManager = countActiveTenantsByManager(tenants, year, month);

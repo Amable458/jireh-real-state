@@ -8,7 +8,7 @@ import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { usePeriod } from '../store/period.js';
 import { useAuth } from '../store/auth.js';
-import { db, logActivity } from '../db/database.js';
+import { db, logActivity, getDataVersion } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
@@ -16,6 +16,7 @@ import { fmtCur, recCurrency } from '../utils/currency.js';
 import { ensureTenantCharges } from '../utils/tenantCharges.js';
 import { isAutoExpense } from '../utils/autoExpense.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
+import { toast } from '../store/toast.js';
 
 const empty = () => ({
   description: '', monthly: '', q1: '', q2: '',
@@ -65,12 +66,14 @@ export default function Expenses() {
     setRows(await db.expenses.where({ year, month }).toArray());
   };
 
-  // Genera lo que falte del mes y luego pinta. Caro (~15 consultas), así que
-  // se reserva para cuando abres el módulo o cambias de periodo.
+  // Al abrir el módulo o cambiar de periodo: pinta ya, genera lo que falte
+  // (recurrentes, cargos del mes) y repinta solo si se escribió algo.
   const load = async () => {
+    await refresh(); // pinta de inmediato con lo que ya hay
+    const v = getDataVersion();
     await ensureRecurring();
     await ensureTenantCharges(year, month); // genera rentas pendientes y limpia pagos a propietario huérfanos
-    await refresh();
+    if (getDataVersion() !== v) await refresh();
   };
 
   useEffect(() => { load(); }, [year, month]);
@@ -128,7 +131,7 @@ export default function Expenses() {
       await logActivity(user.sub, user.username, 'expense.paid', `id=${row.id}`);
       await load();
     } catch (ex) {
-      alert(ex.message || 'Error al marcar como pagado');
+      toast.error(ex.message || 'Error al marcar como pagado');
     }
   };
 
