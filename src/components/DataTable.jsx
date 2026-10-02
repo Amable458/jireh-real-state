@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, ChevronsUpDown, Inbox, Search } from 'lucide-react';
 
+// La columna de acciones (editar, pagar, eliminar…) queda fija a la derecha:
+// en tablas anchas era la primera en quedar oculta y había que desplazarse
+// de lado para encontrarla. Cualquier columna puede pedirlo con sticky: true.
+const isSticky = (c) => c.sticky ?? c.key === 'actions';
+
 export default function DataTable({ columns, rows, pageSize = 10, searchable = true, emptyText = 'Sin registros' }) {
   const [q, setQ] = useState('');
   const [sortBy, setSortBy] = useState(null);
@@ -69,7 +74,7 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
                     key={c.key}
                     onClick={() => sortable && toggleSort(c.key)}
                     aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                    className={`${sortable ? 'is-sortable' : ''} ${c.className || ''}`}
+                    className={`${sortable ? 'is-sortable' : ''} ${isSticky(c) ? 'is-sticky' : ''} ${c.className || ''}`}
                   >
                     <span className="inline-flex items-center gap-1">
                       {c.label}
@@ -96,7 +101,7 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
             ) : slice.map((r, i) => (
               <tr key={r.id ?? i}>
                 {columns.map((c) => (
-                  <td key={c.key} className={c.cellClassName}>
+                  <td key={c.key} className={`${isSticky(c) ? 'is-sticky' : ''} ${c.cellClassName || ''}`}>
                     {c.render ? c.render(r) : (c.accessor ? c.accessor(r) : r[c.key])}
                   </td>
                 ))}

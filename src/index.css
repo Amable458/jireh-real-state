@@ -100,6 +100,27 @@ h1, h2, h3 { letter-spacing: -0.018em; }
     .table tbody tr:hover { @apply bg-brand-50/50; }
   }
 
+  /* Columna fija a la derecha (acciones). Fondo opaco para que no se vean
+     las celdas que pasan por debajo al desplazar, y una sombra suave a la
+     izquierda que avisa que hay más columnas detrás. */
+  .table th.is-sticky,
+  .table td.is-sticky {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    white-space: nowrap;
+    box-shadow: -10px 0 12px -10px rgba(16, 19, 28, 0.14);
+  }
+  .table th.is-sticky { background-color: #f9fafb; }
+  .table td.is-sticky {
+    background-color: #ffffff;
+    transition: background-color var(--dur-fast) var(--ease-out);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    /* mismo tono que la fila, pero opaco (brand-50 al 50% sobre blanco) */
+    .table tbody tr:hover td.is-sticky { background-color: #fffdf5; }
+  }
+
   /* ---------- Contenido de las guías (HelpButton) ---------- */
   .prose-help h4 { @apply font-semibold text-ink-900 mt-4 mb-1 first:mt-0; }
   .prose-help p + p { @apply mt-2; }
