@@ -330,35 +330,47 @@ export default function Rentals() {
         </span>
       );
     }},
-    { key: 'propertyName', label: 'Propiedad', render: (r) => r.propertyName || '—' },
-    { key: 'tenantName', label: 'Inquilino', render: (r) => r.tenantName || '—' },
-    { key: 'agentName', label: 'Agente', render: (r) => r.agentName || '—' },
-    { key: 'currency', label: 'Moneda', render: (r) => (
-      <span className={recCurrency(r) === 'USD' ? 'badge-warning' : 'badge-slate'}>{recCurrency(r)}</span>
-    )},
-    { key: 'amount', label: 'Monto', render: (r) => fmtCur(r.amount, recCurrency(r)), cellClassName: 'font-medium' },
-    { key: 'commissionAmount', label: '% Comisión', render: (r) =>
-      r.commissionPercent != null && r.commissionPercent !== ''
-        ? <span className="badge-info">{Number(r.commissionPercent)}% = {fmtCur(r.commissionAmount ?? (Number(r.amount) || 0) * Number(r.commissionPercent) / 100, recCurrency(r))}</span>
-        : <span className="text-ink-300">—</span>
+    // Propiedad, inquilino y agente en una sola columna: antes eran tres y la
+    // tabla (12 columnas) no cabía en pantalla. El accessor incluye los tres
+    // nombres para que el buscador los siga encontrando.
+    { key: 'propertyName', label: 'Propiedad / Inquilino',
+      accessor: (r) => [r.propertyName, r.tenantName, r.agentName].filter(Boolean).join(' '),
+      render: (r) => (
+        <div className="min-w-[150px] leading-snug">
+          <div className="text-ink-800">{r.propertyName || <span className="text-ink-300">Sin propiedad</span>}</div>
+          {r.tenantName && <div className="text-xs text-ink-500">{r.tenantName}</div>}
+          {r.agentName && <div className="text-xs text-ink-400">Agente: {r.agentName}</div>}
+        </div>
+      )
     },
-    { key: 'paid', label: 'Pagado', render: (r) => fmtCur(r.paid, recCurrency(r)) },
+    // Monto con su comisión debajo. La moneda ya va en el símbolo (RD$ / US$).
+    { key: 'amount', label: 'Monto', accessor: (r) => Number(r.amount) || 0, render: (r) => {
+      const ccy = recCurrency(r);
+      const hasPct = r.commissionPercent != null && r.commissionPercent !== '';
+      return (
+        <div className="leading-snug whitespace-nowrap">
+          <div className="font-medium text-ink-900">{fmtCur(r.amount, ccy)}</div>
+          {hasPct && (
+            <div className="text-xs text-emerald-700">
+              Comisión {Number(r.commissionPercent)}% = {fmtCur(r.commissionAmount ?? (Number(r.amount) || 0) * Number(r.commissionPercent) / 100, ccy)}
+            </div>
+          )}
+        </div>
+      );
+    }},
+    { key: 'paid', label: 'Pagado', render: (r) => <span className="whitespace-nowrap">{fmtCur(r.paid, recCurrency(r))}</span> },
     { key: 'status', label: 'Estado', render: (r) => {
       const c = r.status === 'pagado' ? 'badge-success' : r.status === 'parcial' ? 'badge-warning' : 'badge-danger';
       return <span className={c}>{r.status}</span>;
     }},
-    { key: 'notes', label: 'Notas', sortable: false, render: (r) => {
-      const has = r.notes && r.notes.trim();
-      return has ? (
-        <button onClick={() => setNoteView({ open: true, text: r.notes })} title="Ver nota" className="text-brand-600 hover:text-brand-800">
-          <MessageSquareText size={16} />
-        </button>
-      ) : (
-        <span title="Sin notas" className="text-ink-300"><MessageSquare size={16} /></span>
-      );
-    }},
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
+        {r.notes && r.notes.trim() ? (
+          <button onClick={() => setNoteView({ open: true, text: r.notes })} title="Ver nota"
+            className="btn-ghost p-1.5 text-brand-600 hover:text-brand-800"><MessageSquareText size={14} /></button>
+        ) : (
+          <span title="Sin notas" className="p-1.5 text-ink-200 inline-flex"><MessageSquare size={14} /></span>
+        )}
         {r.status !== 'pagado' && (
           <button onClick={() => setPayConfirm({ open: true, row: r })} title="Marcar como pagado"
             className="btn-ghost p-1.5 text-emerald-600"><CheckCircle2 size={14} /></button>

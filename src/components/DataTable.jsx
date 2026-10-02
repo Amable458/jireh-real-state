@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Inbox, Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Inbox, Search } from 'lucide-react';
 
 // La columna de acciones (editar, pagar, eliminar…) queda fija a la derecha:
 // en tablas anchas era la primera en quedar oculta y había que desplazarse
@@ -11,6 +11,26 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
   const [sortBy, setSortBy] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(1);
+
+  // ¿Hay columnas fuera de la vista? En celulares las barras de
+  // desplazamiento son invisibles, así que se avisa con texto y flechas.
+  const wrapRef = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const check = () => setEdges({
+      left: el.scrollLeft > 2,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+    });
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => { el.removeEventListener('scroll', check); ro.disconnect(); };
+  }, []);
+  const nudge = (dir) => wrapRef.current?.scrollBy({ left: dir * Math.max(240, (wrapRef.current.clientWidth || 0) * 0.6), behavior: 'smooth' });
 
   const filtered = useMemo(() => {
     if (!q) return rows;
@@ -62,7 +82,20 @@ export default function DataTable({ columns, rows, pageSize = 10, searchable = t
           />
         </div>
       )}
-      <div className="table-wrap">
+      {(edges.left || edges.right) && (
+        <div className="flex items-center justify-end gap-2 text-xs text-ink-500" aria-hidden="true">
+          <span>Hay más columnas — desliza la tabla o usa las flechas</span>
+          <button type="button" onClick={() => nudge(-1)} disabled={!edges.left}
+            className="btn-secondary p-1.5 disabled:opacity-30" tabIndex={-1} title="Ver columnas de la izquierda">
+            <ChevronLeft size={14} />
+          </button>
+          <button type="button" onClick={() => nudge(1)} disabled={!edges.right}
+            className="btn-secondary p-1.5 disabled:opacity-30" tabIndex={-1} title="Ver más columnas">
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+      <div ref={wrapRef} className="table-wrap">
         <table className="table tnum">
           <thead>
             <tr>

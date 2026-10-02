@@ -89,6 +89,13 @@ h1, h2, h3 { letter-spacing: -0.018em; }
 
   /* ---------- Tablas ---------- */
   .table-wrap { @apply overflow-x-auto rounded-xl border border-ink-100 bg-white; }
+  /* Barra horizontal visible: la global es casi transparente y en tablas
+     anchas pasaba desapercibida. */
+  .table-wrap::-webkit-scrollbar { height: 12px; }
+  .table-wrap::-webkit-scrollbar-track { background: #f7f8fa; border-top: 1px solid #eef0f4; }
+  .table-wrap::-webkit-scrollbar-thumb { background: #b2b9c6; border: 3px solid #f7f8fa; border-radius: 8px; }
+  .table-wrap::-webkit-scrollbar-thumb:hover { background: #7e8799; }
+  .table-wrap { scrollbar-color: #b2b9c6 #f7f8fa; }
   .table { @apply w-full text-sm; }
   .table thead { @apply bg-ink-50/70 text-ink-500 text-[11px] uppercase tracking-wider; }
   .table th { @apply text-left font-semibold px-4 py-3 select-none; }
