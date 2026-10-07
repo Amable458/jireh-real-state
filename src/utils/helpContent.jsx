@@ -18,6 +18,29 @@ const Note = ({ children }) => (
 );
 
 const HELP = {
+  webProps: (
+    <>
+      <Section title="¿Para qué sirve?">
+        <p>Aquí se administran las propiedades que aparecen en la página web <b>jireh-realestate.vercel.app</b>. Es la única fuente: lo que publiques aquí sale en la web, y lo que ocultes o elimines desaparece de ella.</p>
+      </Section>
+      <Section title="Publicar">
+        <ul>
+          <li><b>Nueva propiedad</b> → sube las fotos, llena los datos y guarda como <b>Publicada</b>. Aparece en la web en menos de un minuto.</li>
+          <li>La <b>primera foto es la portada</b>. Usa la estrella para elegir otra, o las flechas para ordenar.</li>
+          <li>Las fotos se comprimen solas antes de subir. Las del iPhone en formato HEIC no se pueden leer: cambia la cámara a «Más compatible».</li>
+          <li><b>Precio a consultar</b> deja la propiedad sin precio visible.</li>
+        </ul>
+      </Section>
+      <Section title="Estados">
+        <ul>
+          <li><b>Publicada</b>: se ve en la web.</li>
+          <li><b>Oculta</b>: borrador. No se ve, pero no se pierde nada.</li>
+          <li><b>Vendida / alquilada</b>: sale de la web y suma al contador de negocios cerrados.</li>
+        </ul>
+      </Section>
+      <Note>Eliminar borra la propiedad y sus fotos para siempre; solo Admin y SuperAdmin pueden hacerlo. Si solo quieres sacarla de la web, usa «Ocultar».</Note>
+    </>
+  ),
   ownerReports: (
     <>
       <Section title="¿Para qué sirve?">

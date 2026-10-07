@@ -4,7 +4,7 @@ import { setSessionToken, getSessionToken } from './sessionToken.js';
 // Tablas del sistema
 const TABLES = [
   'users', 'rentals', 'sales', 'expenses', 'properties', 'tenants', 'agents',
-  'distributionConfig', 'activityLog', 'settings', 'ownerReports'
+  'distributionConfig', 'activityLog', 'settings', 'ownerReports', 'webProps'
 ];
 const STRING_PK_TABLES = new Set(['distributionConfig', 'settings']);
 

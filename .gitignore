@@ -10,3 +10,5 @@ graphify-out
 .env
 .env.local
 .env.production
+
+.env*
