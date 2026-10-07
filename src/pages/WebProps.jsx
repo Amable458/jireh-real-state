@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, Edit2, Trash2, Eye, EyeOff, ExternalLink, Star, ChevronLeft, ChevronRight,
-  X, ImagePlus, Loader2, Globe, Download, ImageOff
+  X, ImagePlus, Loader2, Globe, Download, ImageOff, CheckSquare
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -10,6 +10,7 @@ import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
 import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
+import { supabase } from '../db/supabaseClient.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtCur } from '../utils/currency.js';
 import { toast } from '../store/toast.js';
@@ -50,6 +51,9 @@ export default function WebProps() {
   const [nuevaCarac, setNuevaCarac] = useState('');
   const [confirm, setConfirm] = useState({ open: false, row: null });
   const [importando, setImportando] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulk, setBulk] = useState({ open: false, accion: null });
+  const [bulkBusy, setBulkBusy] = useState(false);
   const fileRef = useRef(null);
   // Fotos subidas en esta edición: si se cancela, se borran del almacén
   const subidas = useRef([]);
@@ -78,6 +82,15 @@ export default function WebProps() {
     () => (rows || []).filter((r) => filtro === 'todas' || r.estado === filtro),
     [rows, filtro]
   );
+  // Al cambiar de filtro se limpia la selección: nunca actuar sobre filas que
+  // ya no se ven. Y si otra persona borra una, sale de la selección.
+  useEffect(() => { setSelected(new Set()); }, [filtro]);
+  useEffect(() => {
+    if (!rows) return;
+    const ids = new Set(rows.map((r) => r.id));
+    setSelected((s) => (([...s].every((id) => ids.has(id))) ? s : new Set([...s].filter((id) => ids.has(id)))));
+  }, [rows]);
+  const elegidas = useMemo(() => (rows || []).filter((r) => selected.has(r.id)), [rows, selected]);
 
   // Vocabulario existente para sugerir (ciudades, sectores, características)
   const vocab = useMemo(() => {
@@ -257,6 +270,41 @@ export default function WebProps() {
     }
   };
 
+  // ---------- Acciones en bloque ----------
+  const accionBloque = async (accion) => {
+    const lista = elegidas;
+    if (!lista.length) return;
+    setBulkBusy(true);
+    try {
+      if (accion === 'eliminar') {
+        const ids = lista.map((r) => r.id);
+        const { error } = await supabase.from('webProps').delete().in('id', ids);
+        if (error) throw new Error(error.message);
+        await logActivity(user.sub, user.username, 'webProp.delete', `bloque n=${ids.length} ids=${ids.join(',')}`.slice(0, 480));
+        await deletePhotos(lista.flatMap((r) => r.fotos || []));
+        toast.success(`${ids.length} propiedad(es) eliminada(s).`);
+      } else {
+        const estado = accion === 'publicar' ? 'publicada' : 'oculta';
+        // No se publica sin fotos: esas se saltan y se avisa
+        const aplicables = estado === 'publicada' ? lista.filter((r) => (r.fotos || []).length) : lista;
+        const saltadas = lista.length - aplicables.length;
+        const ids = aplicables.map((r) => r.id);
+        if (ids.length) {
+          const { error } = await supabase.from('webProps').update({ estado, updatedBy: user.username }).in('id', ids);
+          if (error) throw new Error(error.message);
+          await logActivity(user.sub, user.username, 'webProp.estado', `bloque ${estado} n=${ids.length}`);
+        }
+        toast.success(`${ids.length} ${estado === 'publicada' ? 'publicada(s)' : 'oculta(s)'}${saltadas ? ` · ${saltadas} sin fotos no se publicaron` : ''}.`);
+      }
+      setSelected(new Set());
+      await refresh();
+    } catch (e) {
+      toast.error(e?.message || 'No se pudo completar la acción');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const importar = async () => {
     setImportando({ hechas: 0, total: 0 });
     try {
@@ -365,9 +413,28 @@ export default function WebProps() {
       </div>
 
       <div className="card card-body">
+        {selected.size > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-ink-900 text-white px-4 py-2.5 animate-in-up" role="region" aria-label="Acciones con las seleccionadas">
+            <span className="inline-flex items-center gap-2 text-sm font-medium mr-2">
+              <CheckSquare size={16} className="text-brand-400" /> {selected.size} seleccionada(s)
+            </span>
+            <button className="btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 text-white" disabled={bulkBusy}
+              onClick={() => setBulk({ open: true, accion: 'publicar' })}><Eye size={14} /> Publicar</button>
+            <button className="btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 text-white" disabled={bulkBusy}
+              onClick={() => setBulk({ open: true, accion: 'ocultar' })}><EyeOff size={14} /> Ocultar</button>
+            {canDelete && (
+              <button className="btn px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white" disabled={bulkBusy}
+                onClick={() => setBulk({ open: true, accion: 'eliminar' })}><Trash2 size={14} /> Eliminar</button>
+            )}
+            <button className="ml-auto text-xs text-ink-300 hover:text-white underline" onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+              Quitar selección
+            </button>
+          </div>
+        )}
         {rows === null
           ? <div className="py-12 text-center text-sm text-ink-400">Cargando…</div>
-          : <DataTable columns={columns} rows={visibles} pageSize={15} emptyText="No hay propiedades en este filtro." />}
+          : <DataTable columns={columns} rows={visibles} pageSize={15} emptyText="No hay propiedades en este filtro."
+              selected={selected} onSelectedChange={setSelected} />}
       </div>
 
       {/* ---------- Formulario ---------- */}
@@ -392,7 +459,7 @@ export default function WebProps() {
           {/* Fotos primero: es lo que más vende */}
           <section>
             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-[11px] uppercase tracking-wider font-semibold text-ink-500">Fotos <span className="normal-case tracking-normal font-normal">· la primera es la portada</span></h4>
+              <h4 className="text-[11px] uppercase tracking-wider font-semibold text-ink-500">Fotos <span className="normal-case tracking-normal font-normal">· toca la ★ para elegir la portada</span></h4>
               <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={() => fileRef.current?.click()} disabled={!!subiendo}>
                 <ImagePlus size={14} /> Agregar fotos
               </button>
@@ -416,6 +483,19 @@ export default function WebProps() {
                     <div key={f.url} className={`relative group rounded-lg overflow-hidden ring-1 ${i === 0 ? 'ring-2 ring-brand-500' : 'ring-ink-200'}`}>
                       <img src={f.card || f.url} alt="" className="w-full aspect-[4/3] object-cover bg-ink-100" loading="lazy" />
                       {i === 0 && <span className="absolute top-1.5 left-1.5 badge bg-brand-500 text-ink-900 ring-0">Portada</span>}
+                      {/* Estrella en TODAS las fotos: rellena = la portada; vacía = tocar para usarla de portada */}
+                      <button
+                        type="button"
+                        onClick={() => i !== 0 && hacerPortada(i)}
+                        aria-pressed={i === 0}
+                        title={i === 0 ? 'Esta es la foto de portada' : 'Usar como foto de portada'}
+                        aria-label={i === 0 ? 'Foto de portada' : 'Usar como foto de portada'}
+                        className={`absolute top-1.5 right-1.5 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-transform duration-150 active:scale-90 ${
+                          i === 0 ? 'bg-brand-500 text-ink-900 cursor-default' : 'bg-white/90 text-ink-500 hover:text-brand-600 hover:scale-110'
+                        }`}
+                      >
+                        <Star size={16} className={i === 0 ? 'fill-ink-900' : ''} />
+                      </button>
                       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 p-1.5 bg-gradient-to-t from-ink-950/70 to-transparent">
                         <div className="flex gap-1">
                           <button type="button" title="Mover a la izquierda" onClick={() => moverFoto(i, -1)} disabled={i === 0}
@@ -424,10 +504,6 @@ export default function WebProps() {
                             className="p-1 rounded-md bg-white/90 text-ink-800 disabled:opacity-30"><ChevronRight size={14} /></button>
                         </div>
                         <div className="flex gap-1">
-                          {i !== 0 && (
-                            <button type="button" title="Usar como portada" onClick={() => hacerPortada(i)}
-                              className="p-1 rounded-md bg-white/90 text-brand-600"><Star size={14} /></button>
-                          )}
                           <button type="button" title="Quitar foto" onClick={() => quitarFoto(i)}
                             className="p-1 rounded-md bg-white/90 text-red-600"><X size={14} /></button>
                         </div>
@@ -577,6 +653,19 @@ export default function WebProps() {
           )}
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={bulk.open}
+        onClose={() => setBulk({ open: false, accion: null })}
+        onConfirm={() => accionBloque(bulk.accion)}
+        danger={bulk.accion === 'eliminar'}
+        title={bulk.accion === 'eliminar' ? `Eliminar ${selected.size} propiedad(es)` : bulk.accion === 'publicar' ? `Publicar ${selected.size} propiedad(es)` : `Ocultar ${selected.size} propiedad(es)`}
+        message={bulk.accion === 'eliminar'
+          ? `Se eliminarán ${selected.size} propiedad(es) y sus fotos. Esto no se puede deshacer. Si solo quieres sacarlas de la web, usa «Ocultar».`
+          : bulk.accion === 'publicar'
+            ? `Se publicarán en la web las ${selected.size} seleccionadas. Las que no tengan fotos se saltan.`
+            : `Las ${selected.size} seleccionadas dejarán de verse en la web. No se pierde nada: puedes publicarlas de nuevo cuando quieras.`}
+      />
 
       <ConfirmModal
         open={confirm.open}

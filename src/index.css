@@ -127,6 +127,9 @@ h1, h2, h3 { letter-spacing: -0.018em; }
     /* mismo tono que la fila, pero opaco (brand-50 al 50% sobre blanco) */
     .table tbody tr:hover td.is-sticky { background-color: #fffdf5; }
   }
+  /* Filas seleccionadas (selección múltiple) */
+  .table tbody tr.is-selected td,
+  .table tbody tr.is-selected td.is-sticky { background-color: #fff6cc; }
 
   /* ---------- Contenido de las guías (HelpButton) ---------- */
   .prose-help h4 { @apply font-semibold text-ink-900 mt-4 mb-1 first:mt-0; }
