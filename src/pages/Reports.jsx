@@ -55,10 +55,17 @@ export default function Reports() {
         distribution: applyDistribution(t.surplus, cfg)
       };
     });
-    const totalIncome = months.reduce((s, x) => s + x.totals.totalIncome, 0);
-    const totalExpenses = months.reduce((s, x) => s + x.totals.expensesAll, 0);
-    const totalSurplus = totalIncome - totalExpenses;
-    setData({ months, totalIncome, totalExpenses, totalSurplus });
+    // Misma regla que el Dashboard: excedente = ingresos − gastos PAGADOS.
+    // Antes la columna «Gastos» sumaba también los pendientes mientras el
+    // excedente de cada fila restaba solo los pagados: Ingresos − Gastos no
+    // daba el Excedente de la misma fila, y el TOTAL tampoco cuadraba con la
+    // suma de las filas. Lo pendiente va ahora en su propia columna.
+    const sum = (f) => months.reduce((s, x) => s + f(x.totals), 0);
+    const totalIncome = sum((t) => t.totalIncome);
+    const totalExpenses = sum((t) => t.expensesPaid);
+    const totalPending = sum((t) => t.expensesAll - t.expensesPaid);
+    const totalSurplus = sum((t) => t.surplus);
+    setData({ months, totalIncome, totalExpenses, totalPending, totalSurplus });
   };
 
   useEffect(() => { generate(); }, []); // eslint-disable-line
@@ -85,15 +92,16 @@ export default function Reports() {
 
     autoTable(doc, {
       startY: 34,
-      head: [['Mes', 'Ingresos', 'Gastos', 'Excedente', 'Comisiones']],
+      head: [['Mes', 'Ingresos', 'Gastos pagados', 'Excedente', 'Pendiente por pagar', 'Comisiones']],
       body: data.months.map((m) => [
         `${monthName(m.month)} ${m.year}`,
         fmtMoney(m.totals.totalIncome),
-        fmtMoney(m.totals.expensesAll),
+        fmtMoney(m.totals.expensesPaid),
         fmtMoney(m.totals.surplus),
+        fmtMoney(m.totals.expensesAll - m.totals.expensesPaid),
         fmtMoney(m.totals.commissions)
       ]),
-      foot: [['TOTAL', fmtMoney(data.totalIncome), fmtMoney(data.totalExpenses), fmtMoney(data.totalSurplus), '']],
+      foot: [['TOTAL', fmtMoney(data.totalIncome), fmtMoney(data.totalExpenses), fmtMoney(data.totalSurplus), fmtMoney(data.totalPending), '']],
       headStyles: { fillColor: [245, 197, 24], textColor: [26, 31, 44] },
       footStyles: { fillColor: [238, 240, 244], textColor: [26, 31, 44] }
     });
@@ -142,9 +150,9 @@ export default function Reports() {
     if (!data) return;
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
-    const summary = [['Mes', 'Año', 'Ingresos', 'Gastos', 'Excedente', 'Comisiones']];
-    data.months.forEach((m) => summary.push([monthName(m.month), m.year, m.totals.totalIncome, m.totals.expensesAll, m.totals.surplus, m.totals.commissions]));
-    summary.push(['TOTAL', '', data.totalIncome, data.totalExpenses, data.totalSurplus, '']);
+    const summary = [['Mes', 'Año', 'Ingresos', 'Gastos pagados', 'Excedente', 'Pendiente por pagar', 'Comisiones']];
+    data.months.forEach((m) => summary.push([monthName(m.month), m.year, m.totals.totalIncome, m.totals.expensesPaid, m.totals.surplus, m.totals.expensesAll - m.totals.expensesPaid, m.totals.commissions]));
+    summary.push(['TOTAL', '', data.totalIncome, data.totalExpenses, data.totalSurplus, data.totalPending, '']);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'Resumen');
 
     const allRentals = []; const allSales = []; const allExpenses = []; const allBonuses = []; const allDist = [];
@@ -241,29 +249,41 @@ export default function Reports() {
           <div className="mb-3 text-xs text-ink-500 bg-ink-50 border border-ink-200 rounded-lg px-3 py-2 inline-block">
             Los totales consolidados están <b>convertidos a RD$</b> usando la tasa registrada en cada transacción.
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Ingresos (RD$)</p><p className="text-xl font-bold text-emerald-700">{fmtMoney(data.totalIncome)}</p></div>
-            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Gastos (RD$)</p><p className="text-xl font-bold text-red-700">{fmtMoney(data.totalExpenses)}</p></div>
-            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Excedente (RD$)</p><p className={`text-xl font-bold ${data.totalSurplus >= 0 ? 'text-ink-900' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</p></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Ingresos (RD$)</p><p className="text-xl font-bold text-emerald-700 tnum">{fmtMoney(data.totalIncome)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Gastos pagados (RD$)</p><p className="text-xl font-bold text-red-700 tnum">{fmtMoney(data.totalExpenses)}</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Excedente (RD$)</p><p className={`text-xl font-bold tnum ${data.totalSurplus >= 0 ? 'text-ink-900' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</p><p className="text-xs text-ink-400 mt-1">Ingresos − gastos pagados</p></div>
+            <div className="card card-body"><p className="text-xs text-ink-500 uppercase font-semibold">Pendiente por pagar (RD$)</p><p className="text-xl font-bold text-amber-700 tnum">{fmtMoney(data.totalPending)}</p><p className="text-xs text-ink-400 mt-1">No resta del excedente hasta que se pague</p></div>
           </div>
 
           <div className="card card-body">
             <h3 className="font-semibold text-ink-700 mb-3">Detalle por mes — {periodLabel()} <span className="text-xs font-normal text-ink-400">(convertido a RD$)</span></h3>
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Mes</th><th className="text-right">Ingresos</th><th className="text-right">Gastos</th><th className="text-right">Excedente</th><th className="text-right">Comisiones</th><th className="text-right">Pool bonos</th></tr></thead>
+                <thead><tr><th>Mes</th><th className="text-right">Ingresos</th><th className="text-right">Gastos pagados</th><th className="text-right">Excedente</th><th className="text-right">Pendiente por pagar</th><th className="text-right">Comisiones</th><th className="text-right">Pool bonos</th></tr></thead>
                 <tbody>
                   {data.months.map((m) => (
                     <tr key={`${m.year}-${m.month}`}>
                       <td className="font-medium">{monthName(m.month)} {m.year}</td>
                       <td className="text-right">{fmtMoney(m.totals.totalIncome)}</td>
-                      <td className="text-right">{fmtMoney(m.totals.expensesAll)}</td>
+                      <td className="text-right">{fmtMoney(m.totals.expensesPaid)}</td>
                       <td className={`text-right font-semibold ${m.totals.surplus >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmtMoney(m.totals.surplus)}</td>
+                      <td className="text-right text-amber-700">{fmtMoney(m.totals.expensesAll - m.totals.expensesPaid)}</td>
                       <td className="text-right">{fmtMoney(m.totals.commissions)}</td>
                       <td className="text-right">{fmtMoney(m.bonuses.pool)}</td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="font-semibold bg-ink-50">
+                    <td>TOTAL</td>
+                    <td className="text-right">{fmtMoney(data.totalIncome)}</td>
+                    <td className="text-right">{fmtMoney(data.totalExpenses)}</td>
+                    <td className={`text-right ${data.totalSurplus >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmtMoney(data.totalSurplus)}</td>
+                    <td className="text-right text-amber-700">{fmtMoney(data.totalPending)}</td>
+                    <td className="text-right" colSpan={2}></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>

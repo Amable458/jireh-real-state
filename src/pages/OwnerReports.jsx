@@ -13,6 +13,7 @@ import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur } from '../utils/currency.js';
 import { toast } from '../store/toast.js';
+import MoneyInput, { isBadMoney } from '../components/MoneyInput.jsx';
 import {
   PAYMENT_METHODS, emptyItem, normalizeItems, itemsTotal, generateOwnerReportPDF
 } from '../utils/ownerReport.js';
@@ -115,15 +116,16 @@ export default function OwnerReports() {
     });
   };
 
-  const setItem = (idx, patch) => {
-    const items = form.items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
-    setForm({ ...form, items });
-  };
-  const addItem = () => setForm({ ...form, items: [...form.items, emptyItem()] });
-  const removeItem = (idx) => {
-    const items = form.items.filter((_, i) => i !== idx);
-    setForm({ ...form, items: items.length ? items : [emptyItem()] });
-  };
+  // Actualizaciones funcionales: dos cambios seguidos (dos clics en «Agregar
+  // gasto», o escribir rápido en dos renglones) no se pisan entre sí.
+  const setItem = (idx, patch) => setForm((f) => ({
+    ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it))
+  }));
+  const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
+  const removeItem = (idx) => setForm((f) => {
+    const items = f.items.filter((_, i) => i !== idx);
+    return { ...f, items: items.length ? items : [emptyItem()] };
+  });
 
   const cleanItems = (items) =>
     normalizeItems(items).filter((i) => i.description.trim() || i.amount > 0);
@@ -155,6 +157,16 @@ export default function OwnerReports() {
     e?.preventDefault?.();
     if (form.periodFrom && form.periodTo && form.periodTo < form.periodFrom) {
       setSaveErr('La fecha "Hasta" debe ser posterior a "Desde".');
+      return null;
+    }
+    // Ningún monto se descarta en silencio (antes «6,300» se guardaba como vacío)
+    if (isBadMoney(form.rentAmount)) {
+      setSaveErr('El monto de renta no es válido. Escribe solo números, por ejemplo 20,500.');
+      return null;
+    }
+    const malos = form.items.map((it, i) => (isBadMoney(it.amount) ? i + 1 : 0)).filter(Boolean);
+    if (malos.length) {
+      setSaveErr(`El importe del gasto ${malos.join(', ')} no es válido. Escribe solo números, por ejemplo 6,300.`);
       return null;
     }
     const payload = buildPayload();
@@ -302,7 +314,7 @@ export default function OwnerReports() {
               <CurrencyFields currency={form.currency} exchangeRate={form.exchangeRate} onChange={(patch) => setForm({ ...form, ...patch })} />
               <div className="md:col-span-2">
                 <label className="label">Total a la fecha — monto de renta ({ccy === 'USD' ? 'US$' : 'RD$'})</label>
-                <input type="number" step="0.01" min="0" className="input" value={form.rentAmount} onChange={(e) => setForm({ ...form, rentAmount: e.target.value })} />
+                <MoneyInput className="input" value={form.rentAmount} onChange={(v) => setForm({ ...form, rentAmount: v })} />
               </div>
             </div>
           </section>
@@ -345,7 +357,7 @@ export default function OwnerReports() {
                         </div>
                         <div>
                           <label className="label text-xs">Importe ({ccy === 'USD' ? 'US$' : 'RD$'})</label>
-                          <input type="number" step="0.01" min="0" className="input text-right tnum" placeholder="0.00" value={it.amount} onChange={(e) => setItem(idx, { amount: e.target.value })} />
+                          <MoneyInput className="input text-right" placeholder="0.00" value={it.amount} onChange={(v) => setItem(idx, { amount: v })} />
                         </div>
                         <div>
                           <label className="label text-xs">Acumulado</label>

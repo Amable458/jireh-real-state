@@ -19,6 +19,7 @@ import { CONTRATO_CATEGORY, normalizeFees, feesTotal } from '../utils/contractFe
 import { generateReceiptPDF } from '../utils/receipt.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 import { toast } from '../store/toast.js';
+import MoneyInput, { isBadMoney } from '../components/MoneyInput.jsx';
 
 const STATUS = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -555,11 +556,11 @@ export default function Rentals() {
           />
           <div>
             <label className="label">Monto ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
-            <input type="number" step="0.01" className="input" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            <MoneyInput className="input" required value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} />
           </div>
           <div>
             <label className="label">Pagado (parcial)</label>
-            <input type="number" step="0.01" className="input" value={form.paid} onChange={(e) => setForm({ ...form, paid: e.target.value })} />
+            <MoneyInput className="input" value={form.paid} onChange={(v) => setForm({ ...form, paid: v })} />
           </div>
           <div>
             <label className="label">Estado</label>
@@ -599,6 +600,10 @@ export default function Rentals() {
           <button className="btn-secondary" onClick={() => setFeesModal(false)}>Cancelar</button>
           <button className="btn-primary" onClick={async () => {
             setFeesErr('');
+            if (feesDraft.some((f) => isBadMoney(f.amount))) {
+              setFeesErr('Hay un monto que no es válido. Escribe solo números, por ejemplo 3,000.');
+              return;
+            }
             try {
               await setContractFees(feesDraft, user);
               setFeesModal(false);
@@ -620,9 +625,9 @@ export default function Rentals() {
                   className="input flex-1" value={f.label} placeholder="Concepto"
                   onChange={(e) => setFeesDraft(feesDraft.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
                 />
-                <input
-                  type="number" step="0.01" min="0" className="input w-28 text-right" value={f.amount}
-                  onChange={(e) => setFeesDraft(feesDraft.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                <MoneyInput
+                  className="input w-28 text-right" value={f.amount}
+                  onChange={(v) => setFeesDraft(feesDraft.map((x, j) => j === i ? { ...x, amount: v } : x))}
                 />
                 <button className="btn-ghost p-1.5 text-red-600" title="Quitar"
                   onClick={() => setFeesDraft(feesDraft.filter((_, j) => j !== i))}>

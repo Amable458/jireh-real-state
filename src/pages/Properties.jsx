@@ -13,6 +13,7 @@ import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { deleteTenantCharges, tenantBillingBlocker } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
+import MoneyInput from '../components/MoneyInput.jsx';
 
 const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', rent: '', sale: '', status: 'disponible', notes: '' });
 const tenantEmpty = () => ({
@@ -428,8 +429,8 @@ export default function Properties() {
           </div>
           <div className="md:col-span-2"><label className="label">Dirección</label><input className="input" value={pForm.address} onChange={(e) => setPForm({ ...pForm, address: e.target.value })} /></div>
           <div className="md:col-span-2"><label className="label">Propietario</label><input className="input" placeholder="Nombre del dueño de la propiedad (aparece en el pago automático)" value={pForm.owner} onChange={(e) => setPForm({ ...pForm, owner: e.target.value })} /></div>
-          <div><label className="label">Renta sugerida (DOP)</label><input type="number" step="0.01" className="input" value={pForm.rent} onChange={(e) => setPForm({ ...pForm, rent: e.target.value })} /></div>
-          <div><label className="label">Precio venta (DOP)</label><input type="number" step="0.01" className="input" value={pForm.sale} onChange={(e) => setPForm({ ...pForm, sale: e.target.value })} /></div>
+          <div><label className="label">Renta sugerida (DOP)</label><MoneyInput className="input" value={pForm.rent} onChange={(v) => setPForm({ ...pForm, rent: v })} /></div>
+          <div><label className="label">Precio venta (DOP)</label><MoneyInput className="input" value={pForm.sale} onChange={(v) => setPForm({ ...pForm, sale: v })} /></div>
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={pForm.notes} onChange={(e) => setPForm({ ...pForm, notes: e.target.value })} /></div>
         </form>
       </Modal>
@@ -467,7 +468,7 @@ export default function Properties() {
             exchangeRate={tForm.exchangeRate}
             onChange={(patch) => setTForm({ ...tForm, ...patch })}
           />
-          <div><label className="label">Renta mensual ({tForm.currency === 'USD' ? 'US$' : 'RD$'})</label><input type="number" step="0.01" className="input" value={tForm.monthlyRent} onChange={(e) => setTForm({ ...tForm, monthlyRent: e.target.value })} /></div>
+          <div><label className="label">Renta mensual ({tForm.currency === 'USD' ? 'US$' : 'RD$'})</label><MoneyInput className="input" value={tForm.monthlyRent} onChange={(v) => setTForm({ ...tForm, monthlyRent: v })} /></div>
           <div>
             <label className="label">% Comisión (lo que nos toca)</label>
             <input type="number" step="0.5" min="0" max="100" className="input" placeholder="ej. 10" value={tForm.commissionPercent} onChange={(e) => setTForm({ ...tForm, commissionPercent: e.target.value })} />
@@ -550,7 +551,7 @@ export default function Properties() {
           </p>
           <div>
             <label className="label">Monto por inquilino (RD$)</label>
-            <input type="number" step="0.01" min="0" className="input" value={bonusInput} onChange={(e) => setBonusInput(e.target.value)} autoFocus />
+            <MoneyInput className="input" value={bonusInput} onChange={setBonusInput} autoFocus />
           </div>
           {bonusErr && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{bonusErr}</div>}
         </div>

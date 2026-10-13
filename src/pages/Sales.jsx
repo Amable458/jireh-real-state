@@ -14,6 +14,7 @@ import { useSettings } from '../store/settings.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
+import MoneyInput from '../components/MoneyInput.jsx';
 import {
   normalizeColegas, makeColegaId, colegasTotalPercent, colegasTotalAmount,
   syncSaleColegaPayables, removeSaleColegaPayables, cleanupOrphanSaleColegas
@@ -276,7 +277,7 @@ export default function Sales() {
           />
           <div>
             <label className="label">Precio ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
-            <input type="number" step="0.01" className="input" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+            <MoneyInput className="input" required value={form.price} onChange={(v) => setForm({ ...form, price: v })} />
           </div>
           <div>
             <label className="label">Comisión (% del precio)</label>

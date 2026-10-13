@@ -14,6 +14,7 @@ import { supabase } from '../db/supabaseClient.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { fmtCur } from '../utils/currency.js';
 import { toast } from '../store/toast.js';
+import MoneyInput, { isBadMoney } from '../components/MoneyInput.jsx';
 import {
   TIPOS, OPERACIONES, ESTADOS, CARACTERISTICAS_BASE, LANDING_URL,
   landingLink, portadaDe, uploadPhoto, deletePhotos, importFromLanding
@@ -190,6 +191,9 @@ export default function WebProps() {
     setErr('');
     if (!form.titulo.trim()) { setErr('Escribe el título de la propiedad.'); return; }
     if (!form.operaciones.length) { setErr('Marca al menos una operación (venta, renta o en planos).'); return; }
+    if (!form.consultar && isBadMoney(form.precio)) {
+      setErr('El precio no es válido. Escribe solo números, por ejemplo 185,000.'); return;
+    }
     if (!form.consultar && (form.precio === '' || Number(form.precio) <= 0)) {
       setErr('Escribe el precio o marca «Precio a consultar».'); return;
     }
@@ -595,8 +599,8 @@ export default function WebProps() {
               </div>
               <div>
                 <label className="label">Precio</label>
-                <input type="number" min="0" step="1" className="input" value={form.precio}
-                  onChange={(e) => set({ precio: e.target.value })} disabled={form.consultar} placeholder={form.consultar ? 'A consultar' : ''} />
+                <MoneyInput className="input" value={form.precio}
+                  onChange={(v) => set({ precio: v })} disabled={form.consultar} placeholder={form.consultar ? 'A consultar' : ''} />
               </div>
               <div className="flex flex-col justify-end gap-2 pb-1">
                 <label className="flex items-center gap-2 text-sm text-ink-700">

@@ -17,6 +17,7 @@ import { ensureTenantCharges } from '../utils/tenantCharges.js';
 import { isAutoExpense } from '../utils/autoExpense.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 import { toast } from '../store/toast.js';
+import MoneyInput from '../components/MoneyInput.jsx';
 
 const empty = () => ({
   description: '', monthly: '', q1: '', q2: '',
@@ -255,7 +256,7 @@ export default function Expenses() {
           />
           <div>
             <label className="label">Monto mensual ({form.currency === 'USD' ? 'US$' : 'RD$'})</label>
-            <input type="number" step="0.01" className="input" required value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} />
+            <MoneyInput className="input" required value={form.monthly} onChange={(v) => setForm({ ...form, monthly: v })} />
           </div>
           <div>
             <label className="label">Fecha de pago</label>
@@ -263,11 +264,11 @@ export default function Expenses() {
           </div>
           <div>
             <label className="label">Quincena 1 (día 15)</label>
-            <input type="number" step="0.01" className="input" value={form.q1} placeholder="(auto = mensual / 2)" onChange={(e) => setForm({ ...form, q1: e.target.value })} />
+            <MoneyInput className="input" value={form.q1} placeholder="(auto = mensual / 2)" onChange={(v) => setForm({ ...form, q1: v })} />
           </div>
           <div>
             <label className="label">Quincena 2 (día 30)</label>
-            <input type="number" step="0.01" className="input" value={form.q2} placeholder="(auto = mensual / 2)" onChange={(e) => setForm({ ...form, q2: e.target.value })} />
+            <MoneyInput className="input" value={form.q2} placeholder="(auto = mensual / 2)" onChange={(v) => setForm({ ...form, q2: v })} />
           </div>
           <div>
             <label className="label">Estado</label>

@@ -14,6 +14,7 @@ import { yearTotals, seriesFromYear } from '../utils/calc.js';
 import { ensureTenantCharges, tenantBillingBlocker } from '../utils/tenantCharges.js';
 import { db } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
+import MoneyInput from '../components/MoneyInput.jsx';
 
 const MonthlyChart = lazy(() => import('../components/MonthlyChart.jsx'));
 
@@ -470,7 +471,7 @@ export default function Dashboard() {
           <p className="text-sm text-ink-600">Define cuántos pesos dominicanos (RD$) equivale 1 dólar (US$). Se usará como tasa por defecto al registrar montos en US$.</p>
           <div>
             <label className="label">1 US$ = ? RD$</label>
-            <input type="number" step="0.01" min="0" className="input" value={rateInput} onChange={(e) => setRateInput(e.target.value)} autoFocus />
+            <MoneyInput className="input" value={rateInput} onChange={setRateInput} autoFocus />
           </div>
           <p className="text-xs text-ink-400">Cada transacción guarda la tasa usada en su momento, así que cambiar esta tasa global no altera los registros históricos.</p>
           {rateErr && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{rateErr}</div>}
