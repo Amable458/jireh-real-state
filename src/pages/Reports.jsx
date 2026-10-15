@@ -5,6 +5,15 @@ import { db } from '../db/database.js';
 import { fmtMoney, fmtDate, monthsList, monthName, yearsList } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { yearTotals, bonusesFrom } from '../utils/calc.js';
+import { partes, montoPagado, montoPendiente, etiquetaEstado } from '../utils/expenseQuincenas.js';
+
+// «RD$17,500 (pagada)» / «RD$17,500 (pendiente)» / «-» para el detalle del PDF
+const qTxt = (r, n) => {
+  const monto = Number(r[`q${n}`]) || 0;
+  if (monto <= 0) return '-';
+  const p = partes(r).find((x) => x.n === n);
+  return `${fmtCur(monto, recCurrency(r))} (${p?.pagada ? 'pagada' : 'pendiente'})`;
+};
 import { applyDistribution } from '../utils/distribution.js';
 import HelpButton from '../components/HelpButton.jsx';
 import HELP from '../utils/helpContent.jsx';
@@ -129,8 +138,12 @@ export default function Reports() {
       }
       if (m.totals.expenses.length) {
         autoTable(doc, {
-          head: [['Descripción', 'Moneda', 'Mensual', 'Q1', 'Q2', 'Pago', 'Estado']],
-          body: m.totals.expenses.map((r) => [r.description, recCurrency(r), fmtCur(r.monthly, recCurrency(r)), fmtCur(r.q1, recCurrency(r)), fmtCur(r.q2, recCurrency(r)), fmtDate(r.paymentDate), r.status]),
+          head: [['Descripción', 'Moneda', 'Mensual', 'Q1', 'Q2', 'Pagado', 'Pendiente', 'Estado']],
+          body: m.totals.expenses.map((r) => {
+            const c = recCurrency(r);
+            return [r.description, c, fmtCur(r.monthly, c), qTxt(r, 1), qTxt(r, 2),
+              fmtCur(montoPagado(r), c), fmtCur(montoPendiente(r), c), etiquetaEstado(r)];
+          }),
           headStyles: { fillColor: [220, 38, 38] }
         });
       }
@@ -159,7 +172,15 @@ export default function Reports() {
     data.months.forEach((m) => {
       m.totals.rentals.forEach((r) => allRentals.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Categoría: r.category || 'Renta', Propiedad: r.propertyName, Inquilino: r.tenantName, Agente: r.agentName, Moneda: recCurrency(r), Tasa: r.exchangeRate || '', Monto: r.amount, Pagado: r.paid, Estado: r.status, Notas: r.notes || '' }));
       m.totals.sales.forEach((r) => allSales.push({ Año: m.year, Mes: monthName(m.month), Fecha: r.date, Propiedad: r.propertyName, Comprador: r.buyer, Agente: r.agentName, Moneda: recCurrency(r), Tasa: r.exchangeRate || '', Precio: r.price, Comisión: r.commission }));
-      m.totals.expenses.forEach((r) => allExpenses.push({ Año: m.year, Mes: monthName(m.month), Descripción: r.description, Moneda: recCurrency(r), Tasa: r.exchangeRate || '', Mensual: r.monthly, Q1: r.q1, Q2: r.q2, FechaPago: r.paymentDate, Estado: r.status }));
+      m.totals.expenses.forEach((r) => {
+        const q = (n) => partes(r).find((x) => x.n === n);
+        const est = (n) => (Number(r[`q${n}`]) > 0 ? (q(n)?.pagada ? `Pagada${q(n).fecha ? ' ' + q(n).fecha : ''}` : 'Pendiente') : '');
+        allExpenses.push({
+          Año: m.year, Mes: monthName(m.month), Descripción: r.description, Moneda: recCurrency(r), Tasa: r.exchangeRate || '',
+          Mensual: r.monthly, Q1: r.q1, 'Q1 estado': est(1), Q2: r.q2, 'Q2 estado': est(2),
+          Pagado: montoPagado(r), Pendiente: montoPendiente(r), FechaPago: r.paymentDate, Estado: etiquetaEstado(r)
+        });
+      });
       m.bonuses.byAgent.forEach((b) => allBonuses.push({ Año: m.year, Mes: monthName(m.month), Agente: b.agentName, Cierres: b.count, MontoGenerado: b.amount, Bonificación: b.bonus }));
       if (m.totals.surplus > 0) {
         const row = { Año: m.year, Mes: monthName(m.month), Excedente: m.totals.surplus };

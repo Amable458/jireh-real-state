@@ -1,6 +1,7 @@
 import { db } from '../db/database.js';
 import { getBonusPercent } from './distribution.js';
 import { recCurrency, toBase, DEFAULT_RATE } from './currency.js';
+import { montoPagado } from './expenseQuincenas.js';
 
 async function getGlobalRate() {
   try {
@@ -58,9 +59,12 @@ function aggregate(rentals, sales, expenses, rate) {
     const c = recCurrency(e);
     cur[c].expensesAll += Number(e.monthly) || 0;
     base.expensesAll += toBase(e.monthly, e, rate);
-    if (e.status === 'pagado') {
-      cur[c].expensesPaid += Number(e.monthly) || 0;
-      base.expensesPaid += toBase(e.monthly, e, rate);
+    // Lo pagado se cuenta por quincena: si solo se pagó la 1ª, entra solo ese
+    // monto (antes un gasto «pagado» contaba entero aunque faltara la 2ª).
+    const paid = montoPagado(e);
+    if (paid) {
+      cur[c].expensesPaid += paid;
+      base.expensesPaid += toBase(paid, e, rate);
     }
   }
 

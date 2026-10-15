@@ -12,6 +12,7 @@ import { monthName } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import { yearTotals, seriesFromYear } from '../utils/calc.js';
 import { ensureTenantCharges, tenantBillingBlocker } from '../utils/tenantCharges.js';
+import { montoPendiente, estadoDerivado, siguientePendiente, nombreQuincena } from '../utils/expenseQuincenas.js';
 import { db } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import MoneyInput from '../components/MoneyInput.jsx';
@@ -107,11 +108,14 @@ export default function Dashboard() {
   const refresh = async () => {
     // Un solo recorrido del año: 3 consultas cubren tanto el mes actual como
     // la gráfica de 12 meses. Antes esto costaba ~52 consultas secuenciales.
-    const [months, tenants, pendientes] = await Promise.all([
+    const [months, tenants, sinPagar, parciales] = await Promise.all([
       yearTotals(year),
       db.tenants.toArray(),
-      db.expenses.where({ status: 'pendiente' }).toArray()
+      db.expenses.where({ status: 'pendiente' }).toArray(),
+      // con una quincena pagada y la otra no
+      db.expenses.where({ status: 'parcial' }).toArray()
     ]);
+    const pendientes = [...sinPagar, ...parciales];
 
     const current = months[month - 1] || months[0];
     setTotals(current);
@@ -140,7 +144,7 @@ export default function Dashboard() {
     // debiendo, así que conviene tenerlos a la vista.
     setOverdue(
       pendientes
-        .filter((e) => e.year < year || (e.year === year && e.month < month))
+        .filter((e) => (e.year < year || (e.year === year && e.month < month)) && montoPendiente(e) > 0)
         .sort((a, b) => (a.year - b.year) || (a.month - b.month))
     );
   };
@@ -249,7 +253,7 @@ export default function Dashboard() {
   // Total adeudado de meses ya cerrados, por moneda
   const overdueTotals = overdue.reduce((acc, e) => {
     const c = recCurrency(e);
-    acc[c] = (acc[c] || 0) + (Number(e.monthly) || 0);
+    acc[c] = (acc[c] || 0) + montoPendiente(e); // lo que falta, no el mensual entero
     return acc;
   }, {});
 
@@ -388,8 +392,11 @@ export default function Dashboard() {
                     <li key={e.id} className="flex justify-between items-center gap-2 text-xs bg-ink-50 rounded-lg px-2.5 py-1.5">
                       <span className="truncate">
                         <b className="text-ink-500">{monthName(e.month).slice(0, 3)}</b> {e.description}
+                        {estadoDerivado(e) === 'parcial' && (
+                          <span className="text-ink-400"> · falta {nombreQuincena(siguientePendiente(e)?.n)}</span>
+                        )}
                       </span>
-                      <span className="tnum shrink-0 font-medium text-ink-700">{fmtCur(e.monthly, recCurrency(e))}</span>
+                      <span className="tnum shrink-0 font-medium text-ink-700">{fmtCur(montoPendiente(e), recCurrency(e))}</span>
                     </li>
                   ))}
                 </ul>

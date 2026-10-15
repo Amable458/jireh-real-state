@@ -799,7 +799,7 @@ begin
     alter table expenses add constraint expenses_amount_check check (monthly >= 0 and q1 >= 0 and q2 >= 0);
   end if;
   if not exists (select 1 from pg_constraint where conname = 'expenses_status_check') then
-    alter table expenses add constraint expenses_status_check check (status in ('pagado','pendiente'));
+    alter table expenses add constraint expenses_status_check check (status in ('pagado','pendiente','parcial'));
   end if;
   if not exists (select 1 from pg_constraint where conname = 'expenses_period_check') then
     alter table expenses add constraint expenses_period_check check (year between 2000 and 2200 and month between 1 and 12);
@@ -1598,4 +1598,46 @@ grant execute on function jireh_restore(jsonb) to anon, authenticated;
 
 do $$ begin
   raise notice '✓ Propiedades en la web: tabla webProps, web_catalogo() y restauración actualizada.';
+end $$;
+
+
+-- ============================================================
+-- GASTOS POR QUINCENAS (migration_quincenas.sql)
+-- ============================================================
+alter table expenses add column if not exists "q1Paid" boolean;
+alter table expenses add column if not exists "q2Paid" boolean;
+alter table expenses add column if not exists "q1PaidAt" date;
+alter table expenses add column if not exists "q2PaidAt" date;
+alter table expenses add column if not exists "revisarQuincenas" boolean not null default false;
+
+-- El estado de un gasto admitía solo pagado | pendiente: se añade «parcial»
+-- (una quincena pagada y la otra no), igual que ya existe en ingresos.
+alter table expenses drop constraint if exists expenses_status_check;
+alter table expenses add constraint expenses_status_check
+  check (status in ('pagado', 'pendiente', 'parcial'));
+
+-- Relleno de lo existente (solo filas que aún no tienen estado por quincena)
+update expenses set
+  "q1Paid"   = case when status = 'pagado' then coalesce(q1, 0) > 0 or (coalesce(q1,0) = 0 and coalesce(q2,0) = 0) else false end,
+  "q2Paid"   = case when status = 'pagado' then coalesce(q2, 0) > 0 else false end,
+  "q1PaidAt" = case when status = 'pagado' and (coalesce(q1,0) > 0 or (coalesce(q1,0) = 0 and coalesce(q2,0) = 0)) then "paymentDate" end,
+  "q2PaidAt" = case when status = 'pagado' and coalesce(q2, 0) > 0 then "paymentDate" end
+where "q1Paid" is null and "q2Paid" is null;
+
+-- Decisión del usuario (15-oct-2026): junio–septiembre quedan pagados
+-- completos; los gastos DIVIDIDOS de octubre 2026 marcados como pagados quedan
+-- «a confirmar» para revisar qué quincena se pagó realmente. No cambian los
+-- totales hasta que alguien los confirme.
+update expenses set "revisarQuincenas" = true
+where year = 2026 and month = 10
+  and status = 'pagado'
+  and coalesce(q1, 0) > 0 and coalesce(q2, 0) > 0
+  and "revisarQuincenas" = false;
+
+do $$
+declare n_rev int; n_par int;
+begin
+  select count(*) into n_rev from expenses where "revisarQuincenas";
+  select count(*) into n_par from expenses where coalesce(q1,0) > 0 and coalesce(q2,0) > 0;
+  raise notice '✓ Quincenas: % gastos divididos en dos quincenas; % marcados «a confirmar».', n_par, n_rev;
 end $$;

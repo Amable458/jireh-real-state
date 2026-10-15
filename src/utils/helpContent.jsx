@@ -187,20 +187,28 @@ const HELP = {
         <p>Todos los gastos operativos mensuales: alquiler, salarios, servicios, etc.</p>
       </Section>
       <Section title="Quincenas">
-        <p>Quincena 1 vence el día <b>15</b>, Quincena 2 el día <b>30</b>. Si los deja vacíos al crear, el sistema divide el monto mensual entre 2.</p>
-        <Formula>Q1 + Q2 ≈ Monto mensual</Formula>
+        <p>Quincena 1 vence el día <b>15</b>, Quincena 2 el día <b>30</b>. Si deja las dos vacías el sistema divide el mensual entre 2; si escribe una, la otra se completa sola.</p>
+        <Formula>Q1 + Q2 = Monto mensual (si no cuadra, no deja guardar)</Formula>
+        <p>Cada quincena se paga por separado y muestra su propio estado: <b>✓ Pagada</b> con la fecha, u <b>○ Pendiente</b>.</p>
+      </Section>
+      <Section title="Estados de un gasto">
+        <ul>
+          <li><b>Pendiente</b>: no se ha pagado nada.</li>
+          <li><b>Parcial</b> (ej. «1ª pagada · falta 2ª»): se pagó una quincena y la otra no. Debajo se ve cuánto falta.</li>
+          <li><b>Pagado</b>: se pagaron todas las quincenas.</li>
+        </ul>
+      </Section>
+      <Section title="Pagar">
+        <p>El botón <b>✓ verde</b> paga la <b>siguiente quincena pendiente</b>: la primera vez la del 15 y la segunda vez la del 30. La confirmación dice cuál y cuánto, y tiene la opción <b>«Pagar las dos»</b>. Para corregir un pago, edite el gasto y desmarque la casilla «Pagada» de esa quincena.</p>
       </Section>
       <Section title="Recurrentes">
-        <p>Si marca <b>"Gasto recurrente"</b>, al entrar al mes siguiente el sistema copia automáticamente esa partida con estado "pendiente". No duplica si ya existen gastos en el mes destino.</p>
+        <p>Si marca <b>"Gasto recurrente"</b>, al entrar al mes siguiente el sistema copia automáticamente esa partida con las dos quincenas sin pagar. No duplica si ya existen gastos en el mes destino.</p>
       </Section>
       <Section title="Cómo afecta al excedente">
-        <Formula>Total mensual = suma de TODOS los gastos del mes (sin importar estado)</Formula>
-        <p>Esto significa que un gasto registrado como "pendiente" ya impacta el cálculo del excedente.</p>
+        <Formula>Excedente = Ingresos − Gastos PAGADOS</Formula>
+        <p>Solo resta lo efectivamente pagado: si de un salario solo se pagó la 1ª quincena, solo esa mitad resta del excedente. Lo que falta aparece como <b>Pendiente por pagar</b>.</p>
       </Section>
-      <Section title="Acciones rápidas">
-        <p>El botón <b>✓ verde</b> marca un gasto como pagado en un click (con confirmación). Los filtros de <b>Moneda</b> y <b>Estado</b> permiten ver solo lo pendiente por pagar.</p>
-      </Section>
-      <Note>El campo "Pendiente" en tarjetas resumen muestra solo lo que aún no se ha pagado, pero contablemente todo el gasto ya está reservado.</Note>
+      <Note>Si de un mes anterior queda algo sin pagar (aunque sea una sola quincena), el Dashboard lo muestra en la alerta de gastos pendientes de meses anteriores.</Note>
     </>
   ),
 
