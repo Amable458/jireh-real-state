@@ -12,3 +12,7 @@ graphify-out
 .env.production
 
 .env*
+.next/
+*.tsbuildinfo
+.gstack/
+._*
