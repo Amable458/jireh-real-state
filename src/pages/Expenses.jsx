@@ -98,7 +98,14 @@ export default function Expenses() {
     if (manual.length > 0) return;
     const prev = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
     const previous = await db.expenses.where({ year: prev.y, month: prev.m }).toArray();
-    const recurring = previous.filter((e) => e.recurring);
+    // Los gastos automáticos (pago a propietario, bono, contrato, colegas) los
+    // genera su propio módulo cada mes: copiarlos aquí los duplicaría. En
+    // noviembre-2026 el bono de administración de octubre estaba marcado como
+    // recurrente; su copia chocó con el índice único (recurringKey, año, mes)
+    // contra el bono que el sistema ya había generado, y como la inserción es
+    // un solo bloque, ese choque tumbó la copia de TODOS los recurrentes.
+    const yaHay = new Set(current.map((e) => e.recurringKey).filter(Boolean));
+    const recurring = previous.filter((e) => e.recurring && !isAutoExpense(e) && !(e.recurringKey && yaHay.has(e.recurringKey)));
     if (recurring.length === 0) return;
     const cloned = recurring.map(({ id, ...e }) => {
       const c = {
@@ -115,9 +122,26 @@ export default function Expenses() {
       if ('revisarQuincenas' in e) c.revisarQuincenas = false;
       return c;
     });
-    try { await db.expenses.bulkAdd(cloned); }
-    catch (e) { console.warn('[Jireh] Copia de gastos recurrentes:', e.message); }
-    await logActivity(user.sub, user.username, 'expenses.autocopy', `${cloned.length} de ${prev.y}-${prev.m}`);
+    // Todo de una vez; si el bloque falla, uno por uno, para que un registro
+    // problemático no impida copiar los demás. Nada se pierde en silencio.
+    let copiados = 0;
+    const fallidos = [];
+    try {
+      await db.expenses.bulkAdd(cloned);
+      copiados = cloned.length;
+    } catch {
+      for (const c of cloned) {
+        try { await db.expenses.add(c); copiados += 1; }
+        catch (e) { fallidos.push(`${c.description}: ${e.message}`); }
+      }
+    }
+    if (copiados) {
+      await logActivity(user.sub, user.username, 'expenses.autocopy', `${copiados} de ${prev.y}-${prev.m}`);
+    }
+    if (fallidos.length) {
+      console.warn('[Jireh] Copia de gastos recurrentes:', fallidos);
+      toast.error(`No se pudieron copiar ${fallidos.length} gasto(s) recurrente(s) del mes anterior: ${fallidos.map((f) => f.split(':')[0]).join(', ')}.`);
+    }
   };
 
   // Solo relee y pinta. Barato.
@@ -211,7 +235,8 @@ export default function Expenses() {
       monthly, q1, q2,
       paymentDate: form.paymentDate,
       currency, exchangeRate,
-      recurring: form.recurring ? 1 : 0,
+      // Los automáticos se regeneran solos cada mes: nunca son «recurrentes»
+      recurring: form.recurring && !isAutoExpense(form) ? 1 : 0,
       notes: form.notes || '',
       ...quincenas,
       status: estadoDerivado({ monthly, q1, q2, ...quincenas })
@@ -504,10 +529,14 @@ export default function Expenses() {
           </div>
 
           <div className="md:col-span-2 flex items-end">
-            <label className="flex items-center gap-2 text-sm text-ink-700">
-              <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked ? 1 : 0 })} />
-              <Copy size={14} className="text-ink-500" /> Gasto recurrente (auto-copiar al siguiente mes)
-            </label>
+            {isAutoExpense(form) ? (
+              <p className="text-xs text-ink-500">Este gasto lo genera el sistema automáticamente cada mes; no hace falta marcarlo como recurrente.</p>
+            ) : (
+              <label className="flex items-center gap-2 text-sm text-ink-700">
+                <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked ? 1 : 0 })} />
+                <Copy size={14} className="text-ink-500" /> Gasto recurrente (auto-copiar al siguiente mes)
+              </label>
+            )}
           </div>
           <div className="md:col-span-2">
             <label className="label">Notas</label>
