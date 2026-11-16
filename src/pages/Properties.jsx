@@ -9,13 +9,13 @@ import { useAuth } from '../store/auth.js';
 import { db, logActivity, rpcListUsers } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
-import { fmtMoney, fmtDate, todayISO } from '../utils/format.js';
-import { fmtCur, recCurrency } from '../utils/currency.js';
+import { fmtDate, todayISO } from '../utils/format.js';
+import { fmtCur, recCurrency, CURRENCIES } from '../utils/currency.js';
 import { deleteTenantCharges, tenantBillingBlocker } from '../utils/tenantCharges.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 import MoneyInput from '../components/MoneyInput.jsx';
 
-const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', rent: '', sale: '', status: 'disponible', notes: '' });
+const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', currency: 'DOP', rent: '', sale: '', status: 'disponible', notes: '' });
 const tenantEmpty = () => ({
   name: '', phone: '', email: '', identification: '', propertyId: '',
   contractStart: todayISO(), contractEnd: '', monthlyRent: '', notes: '',
@@ -39,6 +39,8 @@ export default function Properties() {
   const [pOpen, setPOpen] = useState(false);
   const [pForm, setPForm] = useState(propEmpty());
   const [pEdit, setPEdit] = useState(null);
+  const [pErr, setPErr] = useState('');
+  const [pSaving, setPSaving] = useState(false);
 
   const [tOpen, setTOpen] = useState(false);
   const [tForm, setTForm] = useState(tenantEmpty());
@@ -76,21 +78,49 @@ export default function Properties() {
   useRealtimeTable(['properties', 'tenants', 'agents'], () => refresh());
 
   const saveProp = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
+    if (pSaving) return;
+    if (!pForm.name?.trim()) { setPErr('Escriba el nombre o código de la propiedad.'); return; }
+    const currency = pForm.currency === 'USD' ? 'USD' : 'DOP';
     const payload = {
       name: pForm.name, type: pForm.type, address: pForm.address,
       owner: pForm.owner || '',
+      currency,
       rent: Number(pForm.rent) || 0, sale: Number(pForm.sale) || 0,
       status: pForm.status, notes: pForm.notes
     };
-    if (pEdit) {
-      await db.properties.update(pEdit, payload);
-      await logActivity(user.sub, user.username, 'property.update', `id=${pEdit}`);
-    } else {
-      const id = await db.properties.add({ ...payload, createdAt: new Date().toISOString() });
-      await logActivity(user.sub, user.username, 'property.create', `id=${id}`);
+    setPSaving(true); setPErr('');
+    // Antes de correr la migración la columna currency no existe: las
+    // propiedades en RD$ se guardan igual sin ella; las de US$ piden la migración.
+    const guardar = async (data) => {
+      try {
+        return pEdit ? await db.properties.update(pEdit, data) : await db.properties.add(data);
+      } catch (ex) {
+        if (currency === 'DOP' && /currency/i.test(ex?.message || '')) {
+          const { currency: _c, ...sinMoneda } = data;
+          return pEdit ? db.properties.update(pEdit, sinMoneda) : db.properties.add(sinMoneda);
+        }
+        throw ex;
+      }
+    };
+    try {
+      if (pEdit) {
+        await guardar(payload);
+        await logActivity(user.sub, user.username, 'property.update', `id=${pEdit}`);
+      } else {
+        const id = await guardar({ ...payload, createdAt: new Date().toISOString() });
+        await logActivity(user.sub, user.username, 'property.create', `id=${id}`);
+      }
+      setPOpen(false); load();
+    } catch (ex) {
+      const msg = ex?.message || 'Error al guardar';
+      const hint = /currency|schema cache|column/i.test(msg)
+        ? ' — Falta ejecutar la migración supabase/migration_propiedades_moneda.sql en el SQL Editor de Supabase.'
+        : '';
+      setPErr(msg + hint);
+    } finally {
+      setPSaving(false);
     }
-    setPOpen(false); load();
   };
 
   const saveTenant = async (e) => {
@@ -193,8 +223,8 @@ export default function Properties() {
     { key: 'type', label: 'Tipo' },
     { key: 'address', label: 'Dirección' },
     { key: 'owner', label: 'Propietario', render: (r) => r.owner || '—' },
-    { key: 'rent', label: 'Renta', render: (r) => fmtMoney(r.rent) },
-    { key: 'sale', label: 'Venta', render: (r) => fmtMoney(r.sale) },
+    { key: 'rent', label: 'Renta', render: (r) => fmtCur(r.rent, r.currency === 'USD' ? 'USD' : 'DOP') },
+    { key: 'sale', label: 'Venta', render: (r) => fmtCur(r.sale, r.currency === 'USD' ? 'USD' : 'DOP') },
     { key: 'status', label: 'Estado', render: (r) => <span className="badge-info">{r.status}</span> },
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
@@ -224,7 +254,8 @@ export default function Properties() {
   };
   const editProperty = (r) => {
     setPEdit(r.id);
-    setPForm({ ...propEmpty(), ...r, rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '' });
+    setPErr('');
+    setPForm({ ...propEmpty(), ...r, currency: r.currency === 'USD' ? 'USD' : 'DOP', rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '' });
     setPOpen(true);
   };
 
@@ -375,7 +406,7 @@ export default function Properties() {
             </button>
           </div>
           {tab === 'properties' && (
-            <button className="btn-primary" onClick={() => { setPEdit(null); setPForm(propEmpty()); setPOpen(true); }}>
+            <button className="btn-primary" onClick={() => { setPEdit(null); setPErr(''); setPForm(propEmpty()); setPOpen(true); }}>
               <Plus size={16} /> Nueva propiedad
             </button>
           )}
@@ -409,11 +440,16 @@ export default function Properties() {
         title={pEdit ? 'Editar propiedad' : 'Nueva propiedad'}
         size="lg"
         footer={<>
-          <button className="btn-secondary" onClick={() => setPOpen(false)}>Cancelar</button>
-          <button className="btn-primary" onClick={saveProp}>Guardar</button>
+          <button className="btn-secondary" onClick={() => setPOpen(false)} disabled={pSaving}>Cancelar</button>
+          <button className="btn-primary" onClick={saveProp} disabled={pSaving}>{pSaving ? 'Guardando...' : 'Guardar'}</button>
         </>}
       >
         <form onSubmit={saveProp} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {pErr && (
+            <div className="md:col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {pErr}
+            </div>
+          )}
           <div className="md:col-span-2"><label className="label">Nombre / código</label><input className="input" required value={pForm.name} onChange={(e) => setPForm({ ...pForm, name: e.target.value })} /></div>
           <div>
             <label className="label">Tipo</label>
@@ -429,8 +465,16 @@ export default function Properties() {
           </div>
           <div className="md:col-span-2"><label className="label">Dirección</label><input className="input" value={pForm.address} onChange={(e) => setPForm({ ...pForm, address: e.target.value })} /></div>
           <div className="md:col-span-2"><label className="label">Propietario</label><input className="input" placeholder="Nombre del dueño de la propiedad (aparece en el pago automático)" value={pForm.owner} onChange={(e) => setPForm({ ...pForm, owner: e.target.value })} /></div>
-          <div><label className="label">Renta sugerida (DOP)</label><MoneyInput className="input" value={pForm.rent} onChange={(v) => setPForm({ ...pForm, rent: v })} /></div>
-          <div><label className="label">Precio venta (DOP)</label><MoneyInput className="input" value={pForm.sale} onChange={(v) => setPForm({ ...pForm, sale: v })} /></div>
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="label">Moneda</label>
+              <select className="input" value={pForm.currency || 'DOP'} onChange={(e) => setPForm({ ...pForm, currency: e.target.value })}>
+                {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div><label className="label">Renta sugerida ({pForm.currency === 'USD' ? 'US$' : 'RD$'})</label><MoneyInput className="input" value={pForm.rent} onChange={(v) => setPForm({ ...pForm, rent: v })} /></div>
+            <div><label className="label">Precio venta ({pForm.currency === 'USD' ? 'US$' : 'RD$'})</label><MoneyInput className="input" value={pForm.sale} onChange={(v) => setPForm({ ...pForm, sale: v })} /></div>
+          </div>
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={pForm.notes} onChange={(e) => setPForm({ ...pForm, notes: e.target.value })} /></div>
         </form>
       </Modal>
@@ -456,7 +500,20 @@ export default function Properties() {
           <div><label className="label">Email</label><input type="email" className="input" value={tForm.email} onChange={(e) => setTForm({ ...tForm, email: e.target.value })} /></div>
           <div className="md:col-span-2">
             <label className="label">Propiedad</label>
-            <select className="input" value={tForm.propertyId} onChange={(e) => setTForm({ ...tForm, propertyId: e.target.value })}>
+            <select className="input" value={tForm.propertyId} onChange={(e) => {
+              const propertyId = e.target.value;
+              const prop = properties.find((p) => String(p.id) === String(propertyId));
+              const patch = { propertyId };
+              // Inquilino nuevo sin renta escrita: toma la moneda de la propiedad
+              if (!tEdit && prop && !tForm.monthlyRent) {
+                const cur = prop.currency === 'USD' ? 'USD' : 'DOP';
+                if (cur !== tForm.currency) {
+                  patch.currency = cur;
+                  patch.exchangeRate = cur === 'USD' ? (tForm.exchangeRate || usdToDop) : '';
+                }
+              }
+              setTForm({ ...tForm, ...patch });
+            }}>
               <option value="">— ninguna —</option>
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
