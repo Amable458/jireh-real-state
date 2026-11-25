@@ -1,7 +1,20 @@
+import {
+  Plus, Edit2, Pencil, Trash2, CheckCircle2, FileDown, Printer, Settings, Download, Upload, X, Eye, EyeOff,
+  ExternalLink, Star, ImagePlus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Save,
+  RotateCcw, Users, UserCog, Power, Lock, Unlock, FileText, FileSpreadsheet, ShieldCheck, Wrench, Sparkles,
+  KeyRound, Globe, MessageSquareText, Copy, Building2, UserCheck, Calendar, CheckSquare, ArrowUpDown, LogOut
+} from 'lucide-react';
+
+// ============================================================
+// Guías de cada sección (botón «Guía» arriba a la derecha).
+// Estructura común: para qué sirve → paso a paso → botones y controles
+// (con el mismo ícono que se ve en pantalla) → reglas y cálculos.
+// ============================================================
+
 const Section = ({ title, children }) => (
   <div>
-    <h4 className="font-semibold text-ink-800 mb-1">{title}</h4>
-    <div className="space-y-1.5">{children}</div>
+    <h4 className="font-semibold text-ink-800 mb-1.5">{title}</h4>
+    <div className="space-y-2.5">{children}</div>
   </div>
 );
 
@@ -17,361 +30,517 @@ const Note = ({ children }) => (
   </div>
 );
 
-const HELP = {
-  receipts: (
-    <>
-      <Section title="¿Para qué sirve?">
-        <p>Es el historial de los <b>recibos de pago</b> entregados a inquilinos: nombre del inquilino, propiedad, monto, fecha y forma de pago. No muestra el descuento de administración (eso va en el <b>Reporte a Propietario</b>).</p>
-      </Section>
-      <Section title="Cómo se emite un recibo">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li>En <b>Ingresos</b>, al marcar un cobro como pagado (o guardar un abono), el sistema pregunta <b>«¿Generar recibo?»</b>. Elige la forma de pago y luego <b>Imprimir</b> o <b>Descargar PDF</b>. «No, gracias» no crea nada.</li>
-          <li>El ícono de descarga en cada ingreso cobrado vuelve a abrir esa ventana en cualquier momento.</li>
-          <li>Cada recibo lleva un número consecutivo (REC-00001…) y el monto en letras. Si el cobro ya tiene recibo, se reimprime <b>el mismo número</b>; un abono parcial y luego el resto generan dos recibos.</li>
-        </ul>
-      </Section>
-      <Section title="Buscar y reimprimir">
-        <p>Filtra por <b>inquilino</b>, <b>propiedad</b> o rango de fechas, y usa los íconos de cada fila para descargar o imprimir. Eliminar un recibo (solo Admin) no cambia el cobro en Ingresos.</p>
-      </Section>
-    </>
-  ),
+// Resumen de una línea al inicio de cada guía
+const Intro = ({ children }) => (
+  <p className="text-[13px] text-ink-800 bg-ink-50 rounded-lg px-3 py-2.5 leading-relaxed">{children}</p>
+);
 
-  webProps: (
-    <>
-      <Section title="¿Para qué sirve?">
-        <p>Aquí se administran las propiedades que aparecen en la página web <b>jireh-realestate.vercel.app</b>. Es la única fuente: lo que publiques aquí sale en la web, y lo que ocultes o elimines desaparece de ella.</p>
-      </Section>
-      <Section title="Publicar">
-        <ul>
-          <li><b>Nueva propiedad</b> → sube las fotos, llena los datos y guarda como <b>Publicada</b>. Aparece en la web en menos de un minuto.</li>
-          <li>La <b>primera foto es la portada</b>. Usa la estrella para elegir otra, o las flechas para ordenar.</li>
-          <li>Las fotos se comprimen solas antes de subir. Las del iPhone en formato HEIC no se pueden leer: cambia la cámara a «Más compatible».</li>
-          <li><b>Precio a consultar</b> deja la propiedad sin precio visible.</li>
-        </ul>
-      </Section>
-      <Section title="Estados">
-        <ul>
-          <li><b>Publicada</b>: se ve en la web.</li>
-          <li><b>Oculta</b>: borrador. No se ve, pero no se pierde nada.</li>
-          <li><b>Vendida / alquilada</b>: sale de la web y suma al contador de negocios cerrados.</li>
-        </ul>
-      </Section>
-      <Note>Eliminar borra la propiedad y sus fotos para siempre; solo Admin y SuperAdmin pueden hacerlo. Si solo quieres sacarla de la web, usa «Ocultar».</Note>
-    </>
-  ),
-  ownerReports: (
-    <>
-      <Section title="¿Para qué sirve?">
-        <p>Para rendirle cuentas al <b>propietario</b> de un inmueble: qué se gastó en su propiedad durante un periodo, cuánta renta se cobró y cuánto le queda neto. Reproduce la plantilla de <i>Reporte de Gastos</i> de la empresa y se descarga en PDF listo para entregar.</p>
-      </Section>
-      <Section title="Cómo llenarlo">
-        <ul>
-          <li><b>Elegir inquilino</b> rellena propietario, dirección, residencial, renta y moneda desde el catálogo. Todo queda editable.</li>
-          <li><b>Periodo de gastos:</b> desde / hasta, fecha de pago y cuenta donde se deposita al propietario.</li>
-          <li><b>Total a la fecha — monto de renta:</b> lo cobrado al inquilino en ese periodo.</li>
-          <li><b>Gastos realizados:</b> un renglón por gasto (fecha, forma de pago, descripción, a quién se pagó, importe). El <b>Acumulado</b> se calcula solo.</li>
-        </ul>
-      </Section>
-      <Section title="Cálculo">
-        <Formula>Neto a entregar al propietario = Renta cobrada − Total gastado</Formula>
-        <p>Si los gastos superan la renta, el PDF lo muestra como <b>Saldo a favor de Jireh</b>.</p>
-      </Section>
-      <Note>Este módulo es informativo: no crea ingresos ni gastos en el sistema. Lo que registres aquí no altera el Dashboard ni la distribución de fondos.</Note>
-    </>
-  ),
+// Pasos numerados para una tarea
+const Steps = ({ title, children }) => (
+  <div>
+    {title && <p className="font-medium text-ink-800 text-[13px] mb-1">{title}</p>}
+    <ol className="list-decimal pl-5 space-y-1 text-[13px]">{children}</ol>
+  </div>
+);
+
+// Botón tal como se ve en pantalla: ícono + texto
+const Chip = ({ icon: Icon, label, tone = 'neutral' }) => {
+  const tones = {
+    neutral: 'bg-white text-ink-700 ring-ink-200',
+    primary: 'bg-brand-500 text-ink-900 ring-brand-500',
+    green: 'bg-white text-emerald-700 ring-emerald-200',
+    red: 'bg-white text-red-600 ring-red-200',
+    amber: 'bg-white text-amber-700 ring-amber-200'
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium ring-1 ring-inset whitespace-nowrap ${tones[tone]}`}>
+      {Icon && <Icon size={12} aria-hidden="true" />}{label}
+    </span>
+  );
+};
+
+// Lista «botón → qué hace»
+const Controls = ({ children }) => <div className="divide-y divide-ink-100 border-y border-ink-100">{children}</div>;
+const Ctl = ({ chip, who, children }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,12rem)_1fr] gap-x-3 gap-y-1 py-2 items-start">
+    <div className="flex flex-wrap items-center gap-1">{chip}</div>
+    <div className="text-[13px] text-ink-700">
+      {children}
+      {who && <span className="ml-1 text-[11px] text-ink-500">({who})</span>}
+    </div>
+  </div>
+);
+
+// Controles que comparten todas las tablas
+const TablaComun = () => (
+  <Section title="Cómo usar las tablas">
+    <Controls>
+      <Ctl chip={<Chip icon={Search} label="Buscar..." />}>Escribe cualquier palabra (nombre, propiedad, monto) y la tabla muestra solo lo que coincide.</Ctl>
+      <Ctl chip={<Chip icon={ArrowUpDown} label="Título de columna" />}>Un clic ordena de menor a mayor; otro clic, al revés.</Ctl>
+      <Ctl chip={<><Chip icon={ChevronLeft} label="" /><Chip icon={ChevronRight} label="" /></>}>Junto a la tabla, en pantallas pequeñas: muestran las columnas que no caben. También se puede deslizar de lado.</Ctl>
+      <Ctl chip={<><Chip icon={ChevronsLeft} label="" /><Chip icon={ChevronLeft} label="" /><Chip label="1 2 3" /><Chip icon={ChevronRight} label="" /><Chip icon={ChevronsRight} label="" /></>}>Abajo: primera página, anterior, número de página, siguiente y última.</Ctl>
+      <Ctl chip={<><Chip label="Ver 10 por página" /><Chip label="Ir a … Ir" /></>}>Cuántos registros ver por página, y saltar directo a una página escribiendo su número.</Ctl>
+    </Controls>
+  </Section>
+);
+
+// Selector de mes y año que tienen varias pantallas
+const Periodo = () => (
+  <Ctl chip={<><Chip icon={Calendar} label="Año" /><Chip label="Mes" /></>}>Arriba a la derecha: elige el mes que quieres ver. Lo que registres se guarda en el mes de su <b>fecha</b>, no en el mes que tengas seleccionado.</Ctl>
+);
+
+const HELP = {
+  // ---------------------------------------------------------------- Dashboard
   dashboard: (
     <>
-      <Section title="¿Qué muestra el Dashboard?">
-        <p>Resumen financiero del mes seleccionado y comparativa anual.</p>
+      <Intro>El <b>Dashboard</b> es la foto del mes: cuánto entró, cuánto se pagó, cuánto queda y qué está pendiente. Aquí no se registra nada; todo viene de Ingresos, Ventas y Gastos.</Intro>
+      <Section title="Botones y controles">
+        <Controls>
+          <Periodo />
+          <Ctl chip={<><Chip label="RD$" /><Chip label="US$" /><Chip label="Ambas" /><Chip label="Convertido a RD$" /></>}>
+            Cómo ver las monedas: solo pesos, solo dólares, <b>Ambas</b> (tarjetas separadas) o <b>Convertido a RD$</b> (todo sumado en pesos con la tasa de cada movimiento).
+          </Ctl>
+          <Ctl chip={<Chip icon={Pencil} label="Tasa USD → DOP" />}>Cambia la tasa de cambio que se propone en los registros nuevos en dólares. No cambia los registros ya guardados: cada uno conserva la tasa de su día.</Ctl>
+        </Controls>
       </Section>
-      <Section title="Ingresos totales">
-        <Formula>Rentas pagadas + Rentas parciales (lo cobrado) + Comisión de las ventas del mes</Formula>
-        <p>Las rentas <b>pendientes</b> NO se suman al ingreso. Las parciales solo aportan la parte efectivamente cobrada.</p>
-        <p><b>Importante — por qué las rentas y las ventas no se cuentan igual:</b></p>
-        <ul>
-          <li><b>Rentas:</b> entra el monto completo porque el dinero sí pasa por la inmobiliaria. Usted le cobra al inquilino y después le paga al propietario; ese pago se registra solo como gasto al momento de cobrar, así que al final le queda su comisión.</li>
-          <li><b>Ventas:</b> entra <b>solo la comisión</b>, no el precio del inmueble. Los millones de una venta van del comprador al vendedor directamente y nunca pasan por sus cuentas. Si se contara el precio como ingreso, el dashboard, la distribución de fondos y las bonificaciones quedarían inflados.</li>
+      <Section title="Las tarjetas">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>Ingresos totales:</b> rentas cobradas (las parciales solo por lo cobrado) + la <b>comisión</b> de las ventas del mes. Lo pendiente no suma.</li>
+          <li><b>Gastos pagados:</b> solo lo que ya se pagó, quincena por quincena. «Comprometido total» incluye lo pendiente, como referencia.</li>
+          <li><b>Balance neto / Excedente:</b> ingresos menos gastos pagados. Si sale negativo aparece en rojo y ese mes no hay distribución ni bonos.</li>
+          <li><b>Volumen de ventas (referencia):</b> precio total de lo vendido. No es ingreso: el dinero de una venta va del comprador al vendedor; a la empresa solo le entra la comisión.</li>
         </ul>
-        <p>El precio total de las propiedades vendidas se muestra aparte, en la tarjeta <b>Volumen de ventas (referencia)</b>, como indicador de actividad comercial.</p>
+        <Formula>Excedente = Ingresos cobrados − Gastos PAGADOS</Formula>
       </Section>
-      <Section title="Gastos pagados">
-        <Formula>Suma de "Monto mensual" de los gastos con estado PAGADO únicamente</Formula>
-        <p>Los gastos <b>pendientes</b> no afectan el balance todavía — por eso a inicio de mes, cuando se auto-generan gastos recurrentes o pagos a propietario/contrato, el balance no se descuadra. El sub-texto "Comprometido total" muestra cuánto suma incluyendo lo pendiente, solo como referencia.</p>
-      </Section>
-      <Section title="Balance neto / Excedente">
-        <Formula>Ingresos totales − Gastos PAGADOS</Formula>
-        <p>Si es negativo, el mes es <b>deficitario</b> y se muestra una alerta roja. En ese caso no hay distribución ni bonificaciones. A medida que vas pagando gastos pendientes, el balance baja reflejando la realidad de caja.</p>
-      </Section>
-      <Section title="Comisiones">
-        <p>Suma del campo <b>Comisión</b> de las ventas registradas en el mes.</p>
+      <Section title="Las alertas (campana)">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>Gastos pendientes de meses anteriores:</b> algo quedó sin pagar (aunque sea una quincena).</li>
+          <li><b>No generan renta automática:</b> inquilinos a los que les falta un dato (renta, % de comisión, fechas) para que el sistema cree su cobro cada mes. Corrígelos en Propiedades e Inquilinos.</li>
+          <li><b>Contratos por vencer (30 días):</b> inquilinos cuyo contrato termina pronto.</li>
+          <li><b>Rentas pendientes este mes:</b> cobros que todavía no se han marcado como pagados.</li>
+        </ul>
       </Section>
       <Section title="Gráfica anual">
-        <p>Compara ingresos, gastos y excedente de los 12 meses del año seleccionado.</p>
+        <p className="text-[13px]">Compara ingresos, gastos y excedente de los 12 meses del año elegido.</p>
       </Section>
-      <Section title="Doble moneda (RD$ / US$)">
-        <p>Use el selector de vista arriba: <b>RD$</b>, <b>US$</b>, <b>Ambas</b> (tarjetas separadas por moneda) o <b>Convertido a RD$</b> (todo unificado a pesos).</p>
-        <Formula>Convertido a RD$ = monto USD × tasa de cada transacción</Formula>
-        <p>Cada transacción guarda la tasa usada en su momento, por lo que los históricos no cambian aunque ajuste la tasa global. La tasa USD→DOP se edita desde el botón ✎ junto a "Tasa USD → DOP".</p>
-      </Section>
-      <Note>Distribución y Bonificaciones siempre operan sobre el excedente <b>consolidado en RD$</b>, porque un pool no puede mezclar monedas sin convertir.</Note>
-      <Section title="Alertas">
-        <ul className="list-disc list-inside text-xs">
-          <li><b>Contratos por vencer:</b> inquilinos cuyo <code>contractEnd</code> cae en los próximos 30 días.</li>
-          <li><b>Rentas pendientes:</b> hasta 5 rentas del mes con estado distinto a "pagado".</li>
-        </ul>
-      </Section>
+      <Note>Distribución y Bonificaciones siempre trabajan con el excedente <b>en RD$</b> (convertido), porque no se pueden repartir monedas mezcladas.</Note>
     </>
   ),
 
+  // ---------------------------------------------------------------- Ingresos
   rentals: (
     <>
-      <Section title="¿Qué se registra aquí?">
-        <p>Todos los ingresos del periodo:</p>
-        <ul className="list-disc list-inside text-xs space-y-1 mt-1">
-          <li><b>Rentas:</b> se generan <b>automáticamente desde Inquilinos</b> cada mes (renta fija + % de comisión + día de cobro). No se crean manualmente aquí.</li>
-          <li><b>Otro ingreso</b> (botón "Nuevo ingreso"): por contrato, por administración de propiedad, o una categoría personalizada.</li>
-        </ul>
+      <Intro>En <b>Ingresos</b> se cobra: aquí aparecen las rentas de cada mes y los otros ingresos (contratos, administración…). Cuando un inquilino paga, se marca aquí y el sistema ofrece el <b>recibo</b>.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Cobrar una renta">
+          <li>Las rentas de los inquilinos aparecen solas cada mes como <b>Pendiente</b> (no hay que crearlas).</li>
+          <li>Cuando el inquilino paga, toca <Chip icon={CheckCircle2} label="" tone="green" /> en su fila y confirma.</li>
+          <li>El sistema pregunta <b>«¿Generar recibo?»</b>: revisa la fecha y la forma de pago y toca <Chip icon={Printer} label="Imprimir" tone="primary" /> o <Chip icon={FileDown} label="Descargar PDF" />. Si no hace falta, «No, gracias».</li>
+          <li>Al quedar pagada, se crea solo el <b>pago al propietario</b> en Gastos (renta menos nuestra comisión).</li>
+        </Steps>
+        <Steps title="Registrar un pago parcial (abono)">
+          <li>Toca <Chip icon={Edit2} label="" /> en la renta, cambia el estado a <b>Parcial</b> y escribe lo recibido en «Pagado (parcial)».</li>
+          <li>Guarda: también se ofrece el recibo, solo por el abono. Cuando pague el resto, márcala como pagada y el nuevo recibo saldrá por la diferencia.</li>
+        </Steps>
+        <Steps title="Registrar otro ingreso">
+          <li>Toca <Chip icon={Plus} label="Nuevo ingreso" tone="primary" />, elige la categoría (Contrato de renta, Por contrato, Por administración u Otros), el monto, la moneda y la fecha.</li>
+          <li>Marca <b>Ingreso recurrente</b> si se repite todos los meses: el sistema lo creará como pendiente al empezar cada mes.</li>
+        </Steps>
       </Section>
-      <Section title="Monto vs comisión">
-        <Formula>Monto = renta completa que paga el inquilino</Formula>
-        <Formula>Comisión = Monto × (% del inquilino / 100) — lo que nos toca</Formula>
-        <p>La columna <b>% Comisión</b> muestra el porcentaje y el monto que corresponde a la empresa. El Dashboard resume renta total vs comisión del mes.</p>
-      </Section>
-      <Section title="Contrato de renta (cuentas por pagar)">
-        <p>Al registrar un "otro ingreso" con categoría <b>Contrato de renta</b> y marcarlo como <b>pagado</b>, el sistema genera automáticamente en <b>Gastos Mensuales</b> las cuentas por pagar del desglose (abogado notario, abogado inmobiliaria, data crédito, gestor). Tu ingreso real es el monto del contrato menos esas cuentas.</p>
-        <Formula>Ingreso real = Monto del contrato − suma de cuentas por pagar</Formula>
-        <p>Si reviertes el ingreso a pendiente o lo eliminas, las cuentas por pagar se borran. El desglose y sus montos se editan con el botón <b>"Desglose contrato"</b> (solo Admin/SuperAdmin).</p>
-      </Section>
-      <Section title="Acciones rápidas">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>✓ verde:</b> marca el ingreso como pagado en un click (con confirmación). Dispara automáticamente el pago a propietario o las cuentas por pagar de contrato si aplica.</li>
-          <li><b>Icono de descarga:</b> en ingresos pagados, genera un <b>recibo PDF</b> con los datos del cobro, listo para enviar al inquilino.</li>
-          <li><b>Filtros:</b> combine Moneda y Estado para ver de un vistazo lo pendiente por cobrar.</li>
-        </ul>
-      </Section>
-      <Section title="Categoría y notas">
-        <p>La columna <b>Categoría</b> muestra el tipo de cada ingreso. La columna <b>Notas</b> muestra un ícono: si tiene comentarios, es clickeable para verlos; si no, aparece atenuado.</p>
-      </Section>
-      <Section title="Ingresos recurrentes">
-        <p>Marque <b>"Ingreso recurrente"</b> para que el sistema lo genere automáticamente como <b>pendiente</b> al inicio de cada mes (igual que una renta fija o una cuota de administración). Se copia del mes anterior y no se duplica si ya existe. El ícono <span className="text-emerald-600">↻</span> en la columna Categoría indica que un ingreso es recurrente.</p>
+      <Section title="Botones y controles">
+        <Controls>
+          <Periodo />
+          <Ctl chip={<Chip icon={Plus} label="Nuevo ingreso" tone="primary" />}>Abre el formulario para registrar un ingreso.</Ctl>
+          <Ctl chip={<Chip icon={Settings} label="Desglose contrato" />} who="Admin">Define las cuentas por pagar que nacen al cobrar un <b>Contrato de renta</b> (notario, abogado, data crédito, gestor…) y sus montos.</Ctl>
+          <Ctl chip={<><Chip label="Moneda" /><Chip label="Estado" /></>}>Filtros de la tabla: ver solo RD$ o US$, y solo pendientes, parciales o pagados.</Ctl>
+          <Ctl chip={<Chip icon={CheckCircle2} label="" tone="green" />}>Marca el ingreso como <b>pagado</b> (pide confirmación). Crea el pago al propietario o las cuentas del contrato, y ofrece el recibo.</Ctl>
+          <Ctl chip={<Chip icon={FileDown} label="" />}>En ingresos cobrados: abre la ventana del <b>recibo</b> para imprimirlo o descargarlo otra vez.</Ctl>
+          <Ctl chip={<Chip icon={MessageSquareText} label="" />}>Ver la nota del ingreso. Si está gris, no tiene nota.</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar el ingreso (monto, estado, fecha, agente…).</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Eliminar. También borra su pago al propietario o las cuentas del contrato.</Ctl>
+        </Controls>
       </Section>
       <Section title="Estados">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Pagado:</b> ingreso completo (monto total cuenta como ingreso).</li>
-          <li><b>Parcial:</b> solo el campo "Pagado" cuenta como ingreso real.</li>
-          <li><b>Pendiente:</b> no aporta a los ingresos del mes (genera alerta en Dashboard).</li>
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>Pendiente:</b> no se ha cobrado. No suma a los ingresos y sale en las alertas del Dashboard.</li>
+          <li><b>Parcial:</b> se cobró una parte; solo esa parte cuenta como ingreso.</li>
+          <li><b>Pagado:</b> cobrado completo.</li>
         </ul>
       </Section>
-      <Section title="Agente que cerró">
-        <p>Determina la asignación de bonificaciones. Si el agente no aparece, agréguelo en <b>Propiedades e Inquilinos → Agentes</b>.</p>
+      <Section title="Reglas que conviene saber">
+        <Formula>Comisión = Renta × (% del inquilino / 100) — lo que le toca a la empresa</Formula>
+        <Formula>Pago al propietario = Renta − Comisión (se crea al marcar PAGADA)</Formula>
+        <Formula>Contrato de renta: ingreso real = Monto − cuentas por pagar del desglose</Formula>
+        <p className="text-[13px]">Si una renta vuelve a pendiente o se elimina, su pago al propietario (o las cuentas del contrato) se borran solos. El <b>agente</b> de cada renta cobrada cuenta como un cierre para sus bonificaciones.</p>
       </Section>
-      <Section title="Tarjetas resumen">
-        <Formula>Pagado = suma de monto de rentas en estado "pagado"</Formula>
-        <Formula>Parcial = suma del campo "Pagado" de las rentas parciales</Formula>
-        <Formula>Pendiente = suma de monto de rentas en estado "pendiente"</Formula>
-      </Section>
-      <Note>Las rentas en estado "pagado" o "parcial" cuentan como <b>cierres del agente</b> para el cálculo proporcional del bono.</Note>
+      <TablaComun />
     </>
   ),
 
+  // ---------------------------------------------------------------- Recibos
+  receipts: (
+    <>
+      <Intro><b>Recibos</b> guarda cada recibo de pago entregado a un inquilino: nombre, propiedad, monto, fecha y forma de pago. Desde aquí se buscan y se vuelven a imprimir. Es distinto del <b>Reporte a Propietario</b>, que muestra el descuento de administración.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Emitir un recibo">
+          <li>En <b>Ingresos</b>, marca el cobro como pagado con <Chip icon={CheckCircle2} label="" tone="green" /> (o guarda un abono).</li>
+          <li>En la ventana «¿Generar recibo?» revisa la <b>fecha del pago</b> y la <b>forma de pago</b>.</li>
+          <li>Toca <Chip icon={Printer} label="Imprimir" tone="primary" /> para mandarlo a la impresora, o <Chip icon={FileDown} label="Descargar PDF" /> para enviarlo por WhatsApp o correo.</li>
+        </Steps>
+        <Steps title="Buscar un recibo viejo">
+          <li>Elige el <b>inquilino</b> o la <b>propiedad</b>, o un rango de fechas.</li>
+          <li>Usa <Chip icon={Printer} label="" /> o <Chip icon={FileDown} label="" /> en la fila.</li>
+        </Steps>
+      </Section>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<><Chip label="Inquilino" /><Chip label="Propiedad" /></>}>Muestra solo los recibos de esa persona o de esa propiedad.</Ctl>
+          <Ctl chip={<><Chip label="Desde" /><Chip label="Hasta" /></>}>Limita por fecha de pago.</Ctl>
+          <Ctl chip={<Chip icon={X} label="Quitar filtros" />}>Vuelve a mostrar todos.</Ctl>
+          <Ctl chip={<Chip icon={FileDown} label="" />}>Descarga el recibo en PDF.</Ctl>
+          <Ctl chip={<Chip icon={Printer} label="" />}>Lo envía a la impresora.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Quita el recibo del historial. El cobro en Ingresos no cambia.</Ctl>
+        </Controls>
+        <p className="text-[13px]">Arriba de la tabla se ve cuántos recibos hay en el filtro y el total cobrado en RD$ y US$.</p>
+      </Section>
+      <Section title="Cómo se numeran">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li>Cada recibo lleva un número consecutivo (<b>REC-00001</b>, <b>REC-00002</b>…) y el monto escrito en letras.</li>
+          <li>Si un cobro ya tiene recibo, se reimprime <b>el mismo</b>: no se gastan números.</li>
+          <li>Un abono y luego el resto generan <b>dos</b> recibos, cada uno por lo que se recibió ese día.</li>
+        </ul>
+      </Section>
+      <TablaComun />
+    </>
+  ),
+
+  // ---------------------------------------------------------------- Ventas
   sales: (
     <>
-      <Section title="¿Qué se registra aquí?">
-        <p>Cierres de venta de propiedades. Cada venta se asigna a un agente y a un mes/año.</p>
+      <Intro>En <b>Ingresos por Venta</b> se registra cada propiedad vendida. A la empresa solo le entra la <b>comisión</b>; el precio de venta es un dato de referencia.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Registrar una venta">
+          <li>Toca <Chip icon={Plus} label="Nueva venta" tone="primary" />.</li>
+          <li>Elige la <b>propiedad del inventario</b>: si tiene precio guardado, se propone solo con su moneda.</li>
+          <li>Escribe el comprador, el agente, el precio y el <b>% de comisión</b>; el monto de la comisión se calcula solo.</li>
+          <li>Si la venta se hizo con colegas, toca <Chip icon={Plus} label="Añadir colega" /> y pon el % de la comisión de cada uno.</li>
+          <li>Guarda: la propiedad queda como <b>Vendida</b> en el inventario.</li>
+        </Steps>
       </Section>
-      <Section title="Campos clave">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Precio:</b> monto bruto de venta del inmueble. Es un dato de referencia (volumen vendido), <b>no</b> suma a los ingresos.</li>
-          <li><b>Comisión (%):</b> se ingresa como <b>porcentaje del precio</b>; el sistema calcula el monto. <b>Esto sí es el ingreso</b> de la inmobiliaria.</li>
+      <Section title="Botones y controles">
+        <Controls>
+          <Periodo />
+          <Ctl chip={<Chip icon={Plus} label="Nueva venta" tone="primary" />}>Abre el formulario de venta.</Ctl>
+          <Ctl chip={<><Chip icon={Users} label="Colegas" /><Chip icon={Plus} label="Añadir colega" /></>}>Dentro del formulario: reparte la comisión con otros corredores. Cada colega se vuelve una cuenta por pagar en Gastos.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />}>Dentro del formulario, junto a un colega: lo quita del reparto.</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar la venta.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Eliminar la venta. La propiedad vuelve a <b>Disponible</b> y las cuentas pendientes de los colegas se borran (las ya pagadas se conservan).</Ctl>
+        </Controls>
+      </Section>
+      <Section title="Vínculo con el inventario y con la web">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li>La propiedad vendida <b>no se borra</b>: queda en Propiedades e Inquilinos con la etiqueta <b>Vendida</b>, con su propietario, exclusividad y notas.</li>
+          <li>Si cambias la venta a otra propiedad, la anterior vuelve a Disponible (salvo que otra venta la use).</li>
+          <li>La venta <b>no toca la página web</b>: si la propiedad está publicada, sigue visible hasta que la ocultes o elimines en <b>Propiedades en la web</b>.</li>
         </ul>
-        <Formula>Comisión = Precio × (% comisión / 100)</Formula>
-        <p>El precio de la propiedad va del comprador al vendedor directamente y nunca pasa por las cuentas de la inmobiliaria, por eso el dashboard solo cuenta la comisión.</p>
       </Section>
-      <Section title="Reparto de comisión a colegas">
-        <p>Cuando la venta se cierra con uno o varios colegas, usa la sección <b>Colegas</b> del formulario para asignarle a cada uno un <b>% de la comisión</b>.</p>
-        <Formula>Pago al colega = Comisión × (% del colega / 100)</Formula>
-        <p>Cada colega se genera automáticamente como una <b>cuenta por pagar</b> (gasto pendiente) en <b>Gastos Mensuales</b>, en la moneda de la venta. La parte que no se reparte queda para la inmobiliaria: <b>Neto inmobiliaria = Comisión − suma de colegas</b>. Puedes tener varios colegas; si sumas más de 100% te avisa. Al editar o eliminar la venta, las cuentas por pagar pendientes se ajustan solas (las ya pagadas se conservan como historial).</p>
+      <Section title="Cálculos">
+        <Formula>Comisión = Precio × (% comisión / 100) — esto sí es ingreso</Formula>
+        <Formula>Pago a cada colega = Comisión × (% del colega / 100)</Formula>
+        <Formula>Neto de la empresa = Comisión − pagos a colegas</Formula>
       </Section>
-      <Section title="Vínculo con el inventario">
-        <p>La <b>Propiedad</b> se elige del inventario de <b>Propiedades e Inquilinos</b>. Al guardar la venta, esa propiedad queda marcada como <b>Vendida</b>: no se borra, sigue visible en el inventario con su propietario, exclusividad y notas. Si se elimina la venta (o se cambia a otra propiedad), vuelve a <b>Disponible</b>.</p>
-        <p>La venta <b>no toca la página web</b>: si la propiedad está publicada, sigue apareciendo hasta que la quites en <b>Propiedades en la web</b>.</p>
-      </Section>
-      <Section title="Totales">
-        <Formula>Volumen vendido = suma de precios del mes (referencia)</Formula>
-        <Formula>Comisiones = suma del campo Comisión del mes (esto entra al dashboard)</Formula>
-      </Section>
+      <TablaComun />
     </>
   ),
 
+  // ---------------------------------------------------------------- Gastos
   expenses: (
     <>
-      <Section title="¿Qué se registra aquí?">
-        <p>Todos los gastos operativos mensuales: alquiler, salarios, servicios, etc.</p>
+      <Intro>En <b>Gastos Mensuales</b> está todo lo que la empresa paga: salarios, servicios, pagos a propietarios, bonos… Cada gasto se puede pagar en dos <b>quincenas</b> (día 15 y día 30).</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Pagar un gasto">
+          <li>Toca <Chip icon={CheckCircle2} label="" tone="green" /> en la fila: paga la <b>siguiente quincena pendiente</b> (primero la del 15, luego la del 30).</li>
+          <li>La confirmación dice cuál quincena y cuánto. Si se pagó todo de una vez, usa <b>«Pagar las dos»</b>.</li>
+        </Steps>
+        <Steps title="Crear un gasto">
+          <li>Toca <Chip icon={Plus} label="Nuevo gasto" tone="primary" />, escribe la descripción, la moneda y el monto mensual.</li>
+          <li>Quincenas: si las dejas vacías se divide a la mitad; si escribes una, la otra se completa sola.</li>
+          <li>Deja marcado <b>Gasto recurrente</b> solo si se repite cada mes (salarios, servicios). Quítalo para gastos de una sola vez.</li>
+        </Steps>
+        <Steps title="Corregir un pago marcado por error">
+          <li>Toca <Chip icon={Edit2} label="" />, desmarca «Pagada» en la quincena equivocada y guarda.</li>
+        </Steps>
       </Section>
-      <Section title="Quincenas">
-        <p>Quincena 1 vence el día <b>15</b>, Quincena 2 el día <b>30</b>. Si deja las dos vacías el sistema divide el mensual entre 2; si escribe una, la otra se completa sola.</p>
-        <Formula>Q1 + Q2 = Monto mensual (si no cuadra, no deja guardar)</Formula>
-        <p>Cada quincena se paga por separado y muestra su propio estado: <b>✓ Pagada</b> con la fecha, u <b>○ Pendiente</b>.</p>
+      <Section title="Botones y controles">
+        <Controls>
+          <Periodo />
+          <Ctl chip={<Chip icon={Plus} label="Nuevo gasto" tone="primary" />}>Abre el formulario de gasto.</Ctl>
+          <Ctl chip={<><Chip label="Moneda" /><Chip label="Estado" /></>}>Filtros: solo RD$ o US$; y pendientes, parciales, pagados o «con algo por pagar».</Ctl>
+          <Ctl chip={<Chip label="Confirma qué quincena se pagó" tone="amber" />}>Aviso arriba de la tabla: gastos que hay que revisar. Toca el nombre para abrirlo.</Ctl>
+          <Ctl chip={<Chip label="Quincenas que no suman el mensual" tone="amber" />}>Gastos donde Quincena 1 + Quincena 2 no da el monto mensual. Toca el nombre para corregirlo.</Ctl>
+          <Ctl chip={<Chip icon={CheckCircle2} label="" tone="green" />}>Paga la siguiente quincena (con confirmación).</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar: montos, quincenas pagadas y sus fechas, recurrente, notas.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Eliminar el gasto.</Ctl>
+          <Ctl chip={<Chip icon={Copy} label="Gasto recurrente" />}>Casilla del formulario: copia el gasto al mes siguiente automáticamente, sin pagar.</Ctl>
+        </Controls>
       </Section>
-      <Section title="Estados de un gasto">
-        <ul>
-          <li><b>Pendiente</b>: no se ha pagado nada.</li>
-          <li><b>Parcial</b> (ej. «1ª pagada · falta 2ª»): se pagó una quincena y la otra no. Debajo se ve cuánto falta.</li>
-          <li><b>Pagado</b>: se pagaron todas las quincenas.</li>
+      <Section title="Estados">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>Pendiente:</b> no se ha pagado nada.</li>
+          <li><b>Parcial</b> (ej. «1ª pagada · falta 2ª»): se pagó una quincena; debajo dice cuánto falta.</li>
+          <li><b>Pagado:</b> se pagaron todas las quincenas.</li>
         </ul>
       </Section>
-      <Section title="Pagar">
-        <p>El botón <b>✓ verde</b> paga la <b>siguiente quincena pendiente</b>: la primera vez la del 15 y la segunda vez la del 30. La confirmación dice cuál y cuánto, y tiene la opción <b>«Pagar las dos»</b>. Para corregir un pago, edite el gasto y desmarque la casilla «Pagada» de esa quincena.</p>
-      </Section>
-      <Section title="Recurrentes">
-        <p>Si marca <b>"Gasto recurrente"</b>, al entrar al mes siguiente el sistema copia automáticamente esa partida con las dos quincenas sin pagar. No duplica si ya existen gastos en el mes destino.</p>
+      <Section title="Gastos que crea el sistema solo">
+        <p className="text-[13px]">Pago a propietario (al cobrar una renta), bono de administración, cuentas de un contrato de renta y pago a colegas de una venta. Se regeneran cada mes por su cuenta, por eso no llevan la casilla de recurrente.</p>
       </Section>
       <Section title="Cómo afecta al excedente">
         <Formula>Excedente = Ingresos − Gastos PAGADOS</Formula>
-        <p>Solo resta lo efectivamente pagado: si de un salario solo se pagó la 1ª quincena, solo esa mitad resta del excedente. Lo que falta aparece como <b>Pendiente por pagar</b>.</p>
+        <p className="text-[13px]">Solo resta lo que ya se pagó: si de un salario se pagó la 1ª quincena, solo esa mitad resta. Lo que falta sale como <b>Pendiente por pagar</b> y, si queda de un mes anterior, en las alertas del Dashboard.</p>
       </Section>
-      <Note>Si de un mes anterior queda algo sin pagar (aunque sea una sola quincena), el Dashboard lo muestra en la alerta de gastos pendientes de meses anteriores.</Note>
+      <TablaComun />
     </>
   ),
 
+  // ---------------------------------------------------------------- Distribución
   distribution: (
     <>
-      <Section title="¿Qué hace este módulo?">
-        <p>Define cómo se reparte el <b>excedente del mes</b> entre distintas bolsas (ahorro, oficina, bonos, etc.).</p>
+      <Intro><b>Distribución de Fondos</b> decide cómo se reparte el excedente del mes entre bolsas (ahorro, oficina, bonos del equipo…). Solo Admin y SuperAdmin.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Cambiar los porcentajes">
+          <li>Escribe el % de cada categoría (o su nombre).</li>
+          <li>Cuando la suma dé exactamente <b>100%</b>, se habilita <Chip icon={Save} label="Guardar cambios" tone="primary" />.</li>
+        </Steps>
       </Section>
-      <Section title="Categorías personalizables">
-        <p>Puede <b>añadir</b>, <b>renombrar</b> y <b>eliminar</b> categorías. Los porcentajes deben sumar exactamente 100% para poder guardar.</p>
+      <Section title="Botones y controles">
+        <Controls>
+          <Periodo />
+          <Ctl chip={<Chip icon={Plus} label="Añadir" />}>Agrega una categoría nueva.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />}>Elimina la categoría (no disponible en «Bonos equipo»).</Ctl>
+          <Ctl chip={<Chip icon={Save} label="Guardar cambios" tone="primary" />}>Guarda la configuración (pide confirmación). Solo se activa si suma 100%.</Ctl>
+          <Ctl chip={<Chip icon={RotateCcw} label="Restaurar" />}>Descarta lo que cambiaste y vuelve a lo guardado.</Ctl>
+        </Controls>
       </Section>
-      <Section title="Categoría protegida: Bonos equipo">
-        <p>Esta categoría <b>no se puede eliminar ni renombrar</b> porque alimenta el módulo de Bonificaciones. Su porcentaje sí se puede modificar.</p>
+      <Section title="Cálculo">
+        <Formula>Monto de cada categoría = Excedente × (% / 100)</Formula>
+        <p className="text-[13px]">Si el excedente del mes es cero o negativo, no hay nada que repartir.</p>
       </Section>
-      <Section title="Fórmula">
-        <Formula>Excedente = Ingresos − Gastos</Formula>
-        <Formula>Monto categoría = Excedente × (% categoría / 100)</Formula>
-        <p>Si el excedente es ≤ 0, no se aplica distribución ese mes.</p>
-      </Section>
-      <Note>Cambiar los porcentajes se registra en la bitácora (acción <code>distribution.config</code>) por trazabilidad.</Note>
+      <Note>«Bonos equipo» no se puede borrar ni renombrar porque alimenta Bonificaciones; su porcentaje sí se puede cambiar. Cada cambio queda en la bitácora.</Note>
     </>
   ),
 
+  // ---------------------------------------------------------------- Bonificaciones
   bonuses: (
     <>
-      <Section title="¿Cómo se calculan?">
-        <p>El sistema reserva un <b>pool</b> del excedente del mes basado en el % de la categoría "Bonos equipo" (configurada en Distribución).</p>
+      <Intro><b>Bonificaciones</b> muestra cuánto le toca a cada agente este mes. Es solo de consulta: se calcula solo con el excedente y los cierres de cada uno.</Intro>
+      <Section title="Botones y controles">
+        <Controls>
+          <Periodo />
+        </Controls>
       </Section>
-      <Section title="Fórmulas">
-        <Formula>Pool = Excedente × (% Bonos equipo / 100)</Formula>
-        <Formula>Bono agente = Pool × (cierres del agente / cierres totales del mes)</Formula>
-        <p>Un "cierre" cuenta cuando una renta queda en estado <b>pagado</b> o <b>parcial</b>, y tiene un agente asignado.</p>
+      <Section title="Cómo se calcula">
+        <Formula>Pool = Excedente × (% de «Bonos equipo» en Distribución / 100)</Formula>
+        <Formula>Bono del agente = Pool × (cierres del agente / cierres totales del mes)</Formula>
+        <p className="text-[13px]">Un <b>cierre</b> es una renta cobrada (pagada o parcial) que tiene un agente asignado.</p>
       </Section>
-      <Section title="Casos sin bono">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li>Mes con excedente ≤ 0: pool = 0, no hay bonificaciones.</li>
-          <li>% Bonos equipo = 0: pool = 0.</li>
-          <li>Renta sin agente asignado: no genera bono para nadie.</li>
+      <Section title="¿Por qué alguien no tiene bono?">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li>El mes no tuvo excedente (salió en cero o negativo).</li>
+          <li>«Bonos equipo» está en 0% en Distribución.</li>
+          <li>Sus rentas no tienen agente asignado: edítalas en Ingresos y elige el agente.</li>
         </ul>
       </Section>
-      <Note>Para cambiar el % del pool, vaya a <b>Distribución de Fondos</b> y ajuste la categoría "Bonos equipo".</Note>
     </>
   ),
 
+  // ---------------------------------------------------------------- Propiedades e Inquilinos
   properties: (
     <>
-      <Section title="Tres catálogos en una vista">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Propiedades:</b> el inventario interno (rentas, propietarios, exclusividad). Es distinto de <b>Propiedades en la web</b>, que solo controla lo que ve el público en la página.</li>
-          <li><b>Inquilinos:</b> personas/empresas con contrato sobre una propiedad.</li>
-          <li><b>Agentes:</b> personal que cierra rentas y ventas. Solo los <b>activos</b> aparecen en formularios.</li>
+      <Intro><b>Propiedades e Inquilinos</b> es el inventario interno: propiedades, inquilinos con sus contratos y agentes. De aquí salen las rentas automáticas de cada mes. Es distinto de <b>Propiedades en la web</b>, que solo controla lo que ve el público.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Dar de alta un inquilino nuevo">
+          <li>Si la propiedad no existe, créala en la pestaña <Chip icon={Building2} label="Propiedades" /> con su <b>propietario</b> (es el nombre que sale en el pago al dueño).</li>
+          <li>En <Chip icon={Users} label="Inquilinos" /> toca <Chip icon={Plus} label="Nuevo inquilino" tone="primary" />, elige la propiedad, las fechas del contrato, la moneda, la <b>renta mensual</b>, el <b>% de comisión</b> y el <b>día de cobro</b>.</li>
+          <li>Opcional: elige el <b>administrador / responsable</b> (cobra el bono de administración).</li>
+          <li>Desde ese mes, la renta aparece sola en Ingresos como pendiente.</li>
+        </Steps>
+      </Section>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<><Chip icon={Building2} label="Propiedades" /><Chip icon={Users} label="Inquilinos" /><Chip icon={UserCheck} label="Agentes" /></>}>Pestañas: cambian la tabla y el botón de crear.</Ctl>
+          <Ctl chip={<Chip icon={Plus} label="Nueva propiedad" tone="primary" />}>Agrega una propiedad al inventario: tipo, estado, dirección, propietario, moneda, renta sugerida, precio de venta, exclusividad y notas.</Ctl>
+          <Ctl chip={<><Chip label="Todas" /><Chip label="Disponibles" /><Chip label="Rentadas" /><Chip label="Vendidas" /></>}>Filtros de la pestaña Propiedades, con el conteo de cada grupo.</Ctl>
+          <Ctl chip={<Chip icon={Plus} label="Nuevo inquilino" tone="primary" />}>Agrega un inquilino con su contrato y renta.</Ctl>
+          <Ctl chip={<Chip icon={Settings} label="Bono administración" />} who="Admin">Monto en RD$ que gana el administrador por cada inquilino que lleva.</Ctl>
+          <Ctl chip={<Chip icon={Plus} label="Nuevo agente" tone="primary" />}>Agrega un agente (quien cierra rentas y ventas).</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="Corregir" />}>En el panel <b>Calidad de datos</b>: abre el registro al que le falta algo para que el sistema trabaje solo.</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar el registro.</Ctl>
+          <Ctl chip={<Chip icon={Power} label="" tone="amber" />}>Agentes: desactivar / activar. Un agente inactivo no aparece en los formularios pero conserva su historial.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Eliminar. Mejor desactivar o marcar Vendida si hay historial.</Ctl>
+          <Ctl chip={<Chip icon={UserCog} label="Administrador / responsable" />}>Campo del inquilino: el colaborador que lo administra.</Ctl>
+        </Controls>
+      </Section>
+      <Section title="Estado, moneda y exclusividad de una propiedad">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>Estado:</b> Disponible, Rentada o Vendida. Registrar una venta la marca como Vendida sola; nunca se borra del inventario.</li>
+          <li><b>Moneda:</b> la renta sugerida y el precio de venta se ven en RD$ o US$ según la propiedad. Al asignarle un inquilino nuevo, su renta empieza en esa moneda.</li>
+          <li><b>Exclusividad:</b> marca si la tenemos en exclusiva y hasta cuándo. Vencida se ve en rojo.</li>
         </ul>
       </Section>
-      <Section title="Renta fija con % de comisión (cobro automático)">
-        <p>Cada inquilino define una <b>renta mensual fija</b> (en RD$ o US$), un <b>% de comisión</b> (lo que la empresa gana) y un <b>día de cobro</b>.</p>
-        <Formula>Ingreso mensual generado = Renta mensual × (% comisión / 100)</Formula>
-        <p>Cada mes se genera automáticamente el cobro de la renta completa como <b>pendiente</b> en la fecha de cobro. Se marca como pagado manualmente cuando se cobra. Si el % de comisión está vacío, no se genera nada.</p>
-        <Formula>Pago a propietario = Renta − Comisión (GASTO pendiente)</Formula>
-        <p>El pago al propietario <b>solo se genera cuando marcas la renta como PAGADA</b> (ya cobraste, ahora le debes al dueño). Aparece en <b>Gastos Mensuales</b> con el nombre del campo "Propietario" de la propiedad. Se marca pagado manualmente o se puede eliminar. Si revierte la renta a pendiente, el pago se elimina. Así el balance neto refleja solo la comisión.</p>
-        <p>Solo se genera dentro de la ventana del contrato (entre inicio y fin de contrato).</p>
+      <Section title="Lo que el sistema hace solo">
+        <Formula>Renta del mes = renta mensual del inquilino (pendiente, en su día de cobro)</Formula>
+        <Formula>Pago al propietario = Renta − Comisión (al cobrar la renta)</Formula>
+        <Formula>Bono de administración = RD$ por inquilino × inquilinos que administra</Formula>
+        <p className="text-[13px]">Las rentas solo se crean dentro de las fechas del contrato y si el inquilino tiene renta y % de comisión. Un contrato que vence en 30 días se marca en amarillo y sale en el Dashboard.</p>
       </Section>
-      <Section title="Bono de administración por inquilino">
-        <p>Cada inquilino puede tener un <b>administrador/responsable</b> asignado (un usuario del sistema, ej. un colaborador con rol Operativo). Ese colaborador recibe un bono fijo mensual por cada inquilino que administra.</p>
-        <Formula>Bono del colaborador = RD$ por inquilino × cantidad de inquilinos asignados</Formula>
-        <p>Se genera automáticamente en <b>Gastos Mensuales</b> como un solo gasto pendiente por colaborador (ej. "Bono administración — Yuleimi (3 inquilinos administrados)"). Se recalcula solo si cambia el número de inquilinos asignados, <b>mientras siga pendiente</b>; una vez pagado, ese mes queda fijo como historial. El monto por inquilino se configura con el botón <b>"Bono administración"</b> (solo Admin/SuperAdmin).</p>
-      </Section>
-      <Section title="Estado, moneda y exclusividad">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Estado:</b> Disponible, Rentada o Vendida. Una venta registrada en <b>Ingresos por Venta</b> la marca como Vendida sola; nunca se borra del inventario. Usa los filtros encima de la tabla para ver cada grupo.</li>
-          <li><b>Moneda:</b> la renta sugerida y el precio de venta se muestran en RD$ o US$ según la propiedad.</li>
-          <li><b>Exclusividad:</b> marca si la tenemos en exclusiva y hasta qué fecha. Una exclusividad vencida se muestra en rojo.</li>
-        </ul>
-      </Section>
-      <Section title="Alertas de vencimiento">
-        <p>Los inquilinos cuyo <b>Fin de contrato</b> cae dentro de los próximos 30 días se marcan en amarillo y aparecen en el Dashboard.</p>
-      </Section>
-      <Section title="Agentes inactivos">
-        <p>Use el botón <i>Power</i> para desactivar a un agente sin perder su historial. Las rentas/ventas pasadas conservan su nombre asignado.</p>
-      </Section>
+      <TablaComun />
     </>
   ),
 
+  // ---------------------------------------------------------------- Reporte a Propietario
+  ownerReports: (
+    <>
+      <Intro><b>Reporte a Propietario</b> es el informe para el dueño de un inmueble: la renta cobrada, los gastos hechos en su propiedad y cuánto le queda neto. Sale en PDF con el formato de la empresa.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Hacer un reporte">
+          <li>Toca <Chip icon={Plus} label="Nuevo reporte" tone="primary" /> y elige el inquilino: se llenan solos el propietario, la dirección, la renta y la moneda (todo se puede cambiar).</li>
+          <li>Pon el periodo (desde / hasta), la fecha de pago y la cuenta del propietario.</li>
+          <li>Agrega cada gasto con <Chip icon={Plus} label="Agregar gasto" />: fecha, forma de pago, descripción, a quién se pagó y monto.</li>
+          <li>Toca <Chip icon={FileDown} label="Guardar y PDF" tone="primary" />: se guarda y se descarga listo para entregar.</li>
+        </Steps>
+      </Section>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<Chip icon={Plus} label="Nuevo reporte" tone="primary" />}>Abre un reporte en blanco.</Ctl>
+          <Ctl chip={<Chip icon={Plus} label="Agregar gasto" />}>Añade un renglón de gasto. El acumulado se calcula solo.</Ctl>
+          <Ctl chip={<Chip icon={X} label="" tone="red" />}>Quita ese renglón.</Ctl>
+          <Ctl chip={<Chip icon={FileDown} label="Guardar y PDF" tone="primary" />}>Guarda el reporte y descarga el PDF.</Ctl>
+          <Ctl chip={<Chip icon={FileDown} label="" />}>En la tabla: vuelve a descargar el PDF de un reporte guardado.</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar el reporte.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Eliminar el reporte.</Ctl>
+        </Controls>
+      </Section>
+      <Section title="Cálculo">
+        <Formula>Neto a entregar = Renta cobrada − Total de gastos</Formula>
+        <p className="text-[13px]">Si los gastos superan la renta, el PDF lo muestra como <b>Saldo a favor de Jireh</b>.</p>
+      </Section>
+      <Note>Este reporte es informativo: no crea ingresos ni gastos ni cambia el Dashboard. Para el comprobante que se le da al inquilino, usa <b>Recibos</b>.</Note>
+      <TablaComun />
+    </>
+  ),
+
+  // ---------------------------------------------------------------- Propiedades en la web
+  webProps: (
+    <>
+      <Intro><b>Propiedades en la web</b> controla lo que el público ve en <b>jireh-realestate.vercel.app</b>. Es independiente del inventario interno: agregar, ocultar o eliminar aquí no cambia Propiedades e Inquilinos, y vender una propiedad no la quita de la web.</Intro>
+      <Section title="Paso a paso">
+        <Steps title="Publicar una propiedad">
+          <li>Toca <Chip icon={Plus} label="Nueva propiedad" tone="primary" /> y luego <Chip icon={ImagePlus} label="Agregar fotos" />.</li>
+          <li>La <b>primera foto es la portada</b>: usa <Chip icon={Star} label="" /> para elegir otra, o las flechas para ordenarlas.</li>
+          <li>Llena título, operación (venta / renta / en planos), tipo, ciudad, sector, precio y detalles.</li>
+          <li>Deja el estado en <b>Publicada</b> y guarda. Sale en la web en menos de un minuto.</li>
+        </Steps>
+        <Steps title="Sacar varias de la web a la vez">
+          <li>Marca las casillas de la izquierda (o la de arriba para toda la página).</li>
+          <li>En la barra oscura toca <Chip icon={EyeOff} label="Ocultar" /> o <Chip icon={Trash2} label="Eliminar" tone="red" />.</li>
+        </Steps>
+      </Section>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<Chip icon={Plus} label="Nueva propiedad" tone="primary" />}>Abre el formulario de una propiedad para la web.</Ctl>
+          <Ctl chip={<><Chip label="Todas" /><Chip label="Publicadas" /><Chip label="Ocultas" /><Chip label="Vendidas / alquiladas" /></>}>Filtros por estado, con su conteo.</Ctl>
+          <Ctl chip={<Chip icon={CheckSquare} label="Casillas" />}>Seleccionar varias. Aparece una barra con <b>Publicar</b>, <b>Ocultar</b>, <b>Eliminar</b> y <b>Quitar selección</b>.</Ctl>
+          <Ctl chip={<Chip icon={ExternalLink} label="" />}>Abre la propiedad tal como la ve el público.</Ctl>
+          <Ctl chip={<><Chip icon={EyeOff} label="" /><Chip icon={Eye} label="" /></>}>Ocultar de la web (queda como borrador) o volver a publicar.</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar datos y fotos.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />} who="Admin">Elimina la propiedad y sus fotos <b>para siempre</b>. Si solo quieres sacarla, usa Ocultar.</Ctl>
+          <Ctl chip={<><Chip icon={ImagePlus} label="Agregar fotos" /><Chip icon={Star} label="" /><Chip icon={ChevronLeft} label="" /><Chip icon={ChevronRight} label="" /><Chip icon={X} label="" /></>}>En el formulario: subir fotos, elegir portada, mover a la izquierda o derecha, quitar una foto.</Ctl>
+          <Ctl chip={<Chip label="Añadir" />}>Agrega una característica que no está en la lista (ej. «Jacuzzi»).</Ctl>
+          <Ctl chip={<Chip label="Guardar y agregar otra" />}>Guarda y deja el formulario listo para la siguiente.</Ctl>
+          <Ctl chip={<Chip icon={Globe} label="Ver cómo se ve en la web" />}>Abre la página pública en otra pestaña.</Ctl>
+        </Controls>
+      </Section>
+      <Section title="Estados">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>Publicada:</b> se ve en la web.</li>
+          <li><b>Oculta:</b> borrador; no se ve pero no se pierde nada.</li>
+          <li><b>Vendida / alquilada:</b> sale de la web y suma al contador de negocios cerrados.</li>
+        </ul>
+      </Section>
+      <Note>Las fotos se comprimen solas. Las del iPhone en formato HEIC no se pueden leer: en Ajustes → Cámara → Formatos, elige «Más compatible». «Precio a consultar» publica sin precio visible.</Note>
+      <TablaComun />
+    </>
+  ),
+
+  // ---------------------------------------------------------------- Reportes
   reports: (
     <>
-      <Section title="Modos de filtro">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Mes específico:</b> reporte detallado de un solo mes.</li>
-          <li><b>Año completo:</b> 12 meses del año elegido (incluye meses vacíos).</li>
-          <li><b>Rango:</b> entre dos pares año/mes consecutivos.</li>
-        </ul>
+      <Intro><b>Reportes</b> arma el resumen financiero de un mes, un año o un rango de meses, y lo descarga en PDF o Excel.</Intro>
+      <Section title="Paso a paso">
+        <Steps>
+          <li>Elige el modo: <b>Mes específico</b>, <b>Año completo</b> o <b>Rango de meses</b>, y las fechas.</li>
+          <li>Toca <Chip label="Generar" tone="primary" /> para ver el resumen en pantalla.</li>
+          <li>Descárgalo con <Chip icon={FileText} label="PDF" /> o <Chip icon={FileSpreadsheet} label="Excel" />.</li>
+        </Steps>
       </Section>
-      <Section title="Origen de los totales">
-        <Formula>Ingresos = suma de Ingresos de cada mes del rango</Formula>
-        <Formula>Gastos = suma de Gastos mensuales del rango</Formula>
-        <Formula>Excedente = Ingresos − Gastos del rango</Formula>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<Chip label="Mes / Año / Rango" />}>Qué periodo abarca el reporte.</Ctl>
+          <Ctl chip={<Chip label="Generar" tone="primary" />}>Calcula el reporte con lo elegido.</Ctl>
+          <Ctl chip={<Chip icon={FileText} label="PDF" />}>Primera página con el resumen por mes; luego el detalle de cada mes (rentas, ventas, gastos, bonificaciones).</Ctl>
+          <Ctl chip={<Chip icon={FileSpreadsheet} label="Excel" />}>Hojas separadas: Resumen, Rentas, Ventas, Gastos, Bonificaciones y Distribución.</Ctl>
+        </Controls>
       </Section>
-      <Section title="Exportación PDF">
-        <p>Primera página: resumen mensual. Páginas siguientes: detalle por mes (rentas, ventas, gastos, bonificaciones).</p>
-      </Section>
-      <Section title="Exportación Excel">
-        <p>Genera hojas separadas: <b>Resumen, Rentas, Ventas, Gastos, Bonificaciones, Distribución</b>. Las categorías de distribución se renombran dinámicamente según su configuración.</p>
+      <Section title="De dónde salen los totales">
+        <Formula>Ingresos = lo cobrado en el periodo (rentas + comisiones de venta)</Formula>
+        <Formula>Gastos = lo pagado en el periodo</Formula>
+        <Formula>Excedente = Ingresos − Gastos</Formula>
       </Section>
     </>
   ),
 
+  // ---------------------------------------------------------------- Usuarios
   users: (
     <>
-      <Section title="Roles del sistema">
-        <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>SuperAdmin:</b> acceso total, incluido Respaldo. Puede crear otros SuperAdmin.</li>
-          <li><b>Admin:</b> gestión de usuarios (excepto SuperAdmin), distribución, reportes.</li>
-          <li><b>Operativo:</b> registro diario de rentas, ventas, gastos, propiedades.</li>
+      <Intro><b>Usuarios</b> maneja quién entra al sistema y qué puede hacer, y muestra la bitácora de lo que se ha hecho. Solo Admin y SuperAdmin.</Intro>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<Chip icon={Plus} label="Nuevo usuario" tone="primary" />}>Crea una cuenta: nombre, usuario, contraseña y rol.</Ctl>
+          <Ctl chip={<Chip icon={Edit2} label="" />}>Editar nombre, rol o contraseña. Si dejas la contraseña vacía, se mantiene la actual.</Ctl>
+          <Ctl chip={<><Chip icon={Lock} label="" tone="amber" /><Chip icon={Unlock} label="" tone="green" /></>}>Bloquear (no puede iniciar sesión) o desbloquear. Nadie puede bloquearse a sí mismo.</Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="" tone="red" />}>Eliminar la cuenta. Su historial en la bitácora se conserva.</Ctl>
+          <Ctl chip={<Chip icon={KeyRound} label="Cambiar contraseña" />}>En el menú de la izquierda, abajo: cada quien cambia su propia contraseña.</Ctl>
+          <Ctl chip={<Chip icon={LogOut} label="Salir" />}>En el menú de la izquierda: cerrar sesión.</Ctl>
+        </Controls>
+      </Section>
+      <Section title="Roles">
+        <ul className="list-disc pl-5 text-[13px] space-y-1">
+          <li><b>SuperAdmin:</b> todo, incluido Respaldo. Puede crear otros SuperAdmin.</li>
+          <li><b>Admin:</b> todo menos Respaldo; puede eliminar registros y configurar distribución, desgloses y bonos. No puede tocar a un SuperAdmin.</li>
+          <li><b>Operativo:</b> el trabajo diario: ingresos, cobros, recibos, ventas, gastos, propiedades. No puede eliminar.</li>
         </ul>
       </Section>
-      <Section title="Bloqueo de cuentas">
-        <p>Un usuario bloqueado no puede iniciar sesión. No puede bloquearse a sí mismo. Un Admin no puede bloquear/editar a un SuperAdmin.</p>
-      </Section>
-      <Section title="Contraseñas">
-        <p>Se almacenan con hash <b>SHA-256</b>. En edición, dejar la contraseña vacía mantiene la actual.</p>
-      </Section>
-      <Section title="Bitácora">
-        <p>Registra automáticamente: login/logout, creación/edición/eliminación en cualquier módulo, cambios de distribución, respaldos e importaciones. Se conservan los últimos 50 eventos visibles.</p>
+      <Section title="Bitácora de actividad">
+        <p className="text-[13px]">Muestra los últimos 50 movimientos: inicios de sesión, lo que se creó, editó, cobró o eliminó, recibos emitidos y cambios de configuración, con quién y cuándo.</p>
       </Section>
     </>
   ),
 
+  // ---------------------------------------------------------------- Respaldo
   backup: (
     <>
-      <Section title="Exportar respaldo">
-        <p>Descarga un archivo <code>jireh-backup-YYYY-MM-DD.json</code> con todas las tablas: usuarios, rentas, ventas, gastos, propiedades, inquilinos, agentes, configuración, distribuciones y bitácora.</p>
+      <Intro><b>Respaldo</b> guarda y recupera todos los datos del sistema. Solo SuperAdmin. Además, cada noche se hace un respaldo automático en un repositorio privado.</Intro>
+      <Section title="Botones y controles">
+        <Controls>
+          <Ctl chip={<Chip icon={Download} label="Descargar respaldo" tone="primary" />}>Descarga un archivo <code>.json</code> con todos los datos. Guárdalo en un lugar seguro.</Ctl>
+          <Ctl chip={<Chip icon={Upload} label="Seleccionar archivo" />}><b>Restaura</b> un respaldo: antes de aplicar muestra qué trae y pide confirmación. <b>Reemplaza todo</b> lo actual por lo del archivo; si algo falla, no cambia nada.</Ctl>
+          <Ctl chip={<Chip icon={ShieldCheck} label="Ejecutar validación" />}>Revisa que los datos estén sanos (por ejemplo, rentas que apuntan a inquilinos borrados) y muestra un informe.</Ctl>
+          <Ctl chip={<Chip icon={Wrench} label="Reparar referencias huérfanas" />}>Dentro del informe: limpia los vínculos rotos que encontró la validación.</Ctl>
+          <Ctl chip={<Chip icon={Sparkles} label="Generar datos de ejemplo" />}>Crea 6 meses de datos ficticios para practicar. <b>No usar con datos reales.</b></Ctl>
+          <Ctl chip={<Chip icon={Trash2} label="Limpiar datos" tone="red" />}>Borra rentas, ventas, gastos, propiedades, inquilinos y bitácora. Conserva usuarios, agentes y la configuración.</Ctl>
+        </Controls>
       </Section>
-      <Section title="Importar / Restaurar">
-        <p><b>Reemplaza por completo</b> los datos actuales con los del archivo. Tras importar, la app recarga automáticamente.</p>
-      </Section>
-      <Section title="Cargar datos de ejemplo">
-        <p>Genera un escenario realista de 6 meses (10 propiedades, 7 inquilinos, 2 agentes extra, ~42 rentas, 3 ventas, 60 gastos). Útil para probar todos los módulos. Conserva los usuarios y agentes existentes.</p>
-      </Section>
-      <Section title="Limpiar datos">
-        <p>Borra rentas, ventas, gastos, propiedades, inquilinos, distribuciones y bitácora. Conserva usuarios, agentes y la configuración de distribución.</p>
-      </Section>
-      <Note>Antes de importar o limpiar, considere exportar un respaldo primero.</Note>
+      <Note>Antes de restaurar o limpiar, descarga un respaldo. Restaurar y limpiar no se pueden deshacer.</Note>
     </>
   )
 };
