@@ -18,6 +18,24 @@ const Note = ({ children }) => (
 );
 
 const HELP = {
+  receipts: (
+    <>
+      <Section title="¿Para qué sirve?">
+        <p>Es el historial de los <b>recibos de pago</b> entregados a inquilinos: nombre del inquilino, propiedad, monto, fecha y forma de pago. No muestra el descuento de administración (eso va en el <b>Reporte a Propietario</b>).</p>
+      </Section>
+      <Section title="Cómo se emite un recibo">
+        <ul className="list-disc list-inside text-xs space-y-1">
+          <li>En <b>Ingresos</b>, al marcar un cobro como pagado (o guardar un abono), el sistema pregunta <b>«¿Generar recibo?»</b>. Elige la forma de pago y luego <b>Imprimir</b> o <b>Descargar PDF</b>. «No, gracias» no crea nada.</li>
+          <li>El ícono de descarga en cada ingreso cobrado vuelve a abrir esa ventana en cualquier momento.</li>
+          <li>Cada recibo lleva un número consecutivo (REC-00001…) y el monto en letras. Si el cobro ya tiene recibo, se reimprime <b>el mismo número</b>; un abono parcial y luego el resto generan dos recibos.</li>
+        </ul>
+      </Section>
+      <Section title="Buscar y reimprimir">
+        <p>Filtra por <b>inquilino</b>, <b>propiedad</b> o rango de fechas, y usa los íconos de cada fila para descargar o imprimir. Eliminar un recibo (solo Admin) no cambia el cobro en Ingresos.</p>
+      </Section>
+    </>
+  ),
+
   webProps: (
     <>
       <Section title="¿Para qué sirve?">
@@ -174,6 +192,10 @@ const HELP = {
         <Formula>Pago al colega = Comisión × (% del colega / 100)</Formula>
         <p>Cada colega se genera automáticamente como una <b>cuenta por pagar</b> (gasto pendiente) en <b>Gastos Mensuales</b>, en la moneda de la venta. La parte que no se reparte queda para la inmobiliaria: <b>Neto inmobiliaria = Comisión − suma de colegas</b>. Puedes tener varios colegas; si sumas más de 100% te avisa. Al editar o eliminar la venta, las cuentas por pagar pendientes se ajustan solas (las ya pagadas se conservan como historial).</p>
       </Section>
+      <Section title="Vínculo con el inventario">
+        <p>La <b>Propiedad</b> se elige del inventario de <b>Propiedades e Inquilinos</b>. Al guardar la venta, esa propiedad queda marcada como <b>Vendida</b>: no se borra, sigue visible en el inventario con su propietario, exclusividad y notas. Si se elimina la venta (o se cambia a otra propiedad), vuelve a <b>Disponible</b>.</p>
+        <p>La venta <b>no toca la página web</b>: si la propiedad está publicada, sigue apareciendo hasta que la quites en <b>Propiedades en la web</b>.</p>
+      </Section>
       <Section title="Totales">
         <Formula>Volumen vendido = suma de precios del mes (referencia)</Formula>
         <Formula>Comisiones = suma del campo Comisión del mes (esto entra al dashboard)</Formula>
@@ -257,7 +279,7 @@ const HELP = {
     <>
       <Section title="Tres catálogos en una vista">
         <ul className="list-disc list-inside text-xs space-y-1">
-          <li><b>Propiedades:</b> inmuebles disponibles para renta o venta.</li>
+          <li><b>Propiedades:</b> el inventario interno (rentas, propietarios, exclusividad). Es distinto de <b>Propiedades en la web</b>, que solo controla lo que ve el público en la página.</li>
           <li><b>Inquilinos:</b> personas/empresas con contrato sobre una propiedad.</li>
           <li><b>Agentes:</b> personal que cierra rentas y ventas. Solo los <b>activos</b> aparecen en formularios.</li>
         </ul>
@@ -274,6 +296,13 @@ const HELP = {
         <p>Cada inquilino puede tener un <b>administrador/responsable</b> asignado (un usuario del sistema, ej. un colaborador con rol Operativo). Ese colaborador recibe un bono fijo mensual por cada inquilino que administra.</p>
         <Formula>Bono del colaborador = RD$ por inquilino × cantidad de inquilinos asignados</Formula>
         <p>Se genera automáticamente en <b>Gastos Mensuales</b> como un solo gasto pendiente por colaborador (ej. "Bono administración — Yuleimi (3 inquilinos administrados)"). Se recalcula solo si cambia el número de inquilinos asignados, <b>mientras siga pendiente</b>; una vez pagado, ese mes queda fijo como historial. El monto por inquilino se configura con el botón <b>"Bono administración"</b> (solo Admin/SuperAdmin).</p>
+      </Section>
+      <Section title="Estado, moneda y exclusividad">
+        <ul className="list-disc list-inside text-xs space-y-1">
+          <li><b>Estado:</b> Disponible, Rentada o Vendida. Una venta registrada en <b>Ingresos por Venta</b> la marca como Vendida sola; nunca se borra del inventario. Usa los filtros encima de la tabla para ver cada grupo.</li>
+          <li><b>Moneda:</b> la renta sugerida y el precio de venta se muestran en RD$ o US$ según la propiedad.</li>
+          <li><b>Exclusividad:</b> marca si la tenemos en exclusiva y hasta qué fecha. Una exclusividad vencida se muestra en rojo.</li>
+        </ul>
       </Section>
       <Section title="Alertas de vencimiento">
         <p>Los inquilinos cuyo <b>Fin de contrato</b> cae dentro de los próximos 30 días se marcan en amarillo y aparecen en el Dashboard.</p>

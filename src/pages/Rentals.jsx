@@ -16,7 +16,8 @@ import { fmtCur, recCurrency } from '../utils/currency.js';
 import { ensureTenantCharges, onRentalStatusChange, removeOwnerPayment } from '../utils/tenantCharges.js';
 import { onContractIncomeStatusChange, removeContractPayables, isContractIncome } from '../utils/contractCharges.js';
 import { CONTRATO_CATEGORY, normalizeFees, feesTotal } from '../utils/contractFees.js';
-import { generateReceiptPDF } from '../utils/receipt.js';
+import { receivedAmount } from '../utils/receipt.js';
+import ReceiptPrompt from '../components/ReceiptPrompt.jsx';
 import CurrencyFields from '../components/CurrencyFields.jsx';
 import { toast } from '../store/toast.js';
 import MoneyInput, { isBadMoney } from '../components/MoneyInput.jsx';
@@ -63,6 +64,8 @@ export default function Rentals() {
   const [curFilter, setCurFilter] = useState('all'); // all | DOP | USD
   const [statusFilter, setStatusFilter] = useState('all'); // all | pendiente | parcial | pagado
   const [payConfirm, setPayConfirm] = useState({ open: false, row: null });
+  // Recibo: se ofrece al registrar un cobro (asked) o se pide desde la tabla
+  const [receiptFor, setReceiptFor] = useState({ income: null, asked: true });
   const [saveErr, setSaveErr] = useState('');
   const [saving, setSaving] = useState(false);
   const { usdToDop, contractFees, setContractFees } = useSettings();
@@ -224,8 +227,10 @@ export default function Rentals() {
 
     setSaveErr(''); setSaving(true);
     try {
+      let savedId = editId;
+      const prevRow = editId ? rows.find((r) => r.id === editId) : null;
       if (editId) {
-        const prevStatus = rows.find((r) => r.id === editId)?.status;
+        const prevStatus = prevRow?.status;
         await db.rentals.update(editId, payload);
         await logActivity(user.sub, user.username, 'income.update', `id=${editId} kind=${payload.kind}`);
         // Renta de inquilino: al cobrarla nace el pago al propietario; al revertir, se elimina
@@ -238,6 +243,7 @@ export default function Rentals() {
         }
       } else {
         const id = await db.rentals.add({ ...payload, createdAt: new Date().toISOString() });
+        savedId = id;
         await logActivity(user.sub, user.username, 'income.create', `id=${id} kind=${payload.kind}`);
         if (payload.tenantId && payload.commissionPercent != null && payload.status === 'pagado') {
           await onRentalStatusChange({ ...payload, id }, 'pendiente');
@@ -248,6 +254,10 @@ export default function Rentals() {
       }
       setOpen(false);
       await load();
+      // Si con este guardado entró dinero (cobro nuevo o abono mayor), ofrecer recibo
+      if (savedId && receivedAmount(payload) > receivedAmount(prevRow)) {
+        setReceiptFor({ income: { ...payload, id: savedId }, asked: true });
+      }
     } catch (ex) {
       const msg = ex?.message || 'Error al guardar';
       // Pista útil si faltan las migraciones de columnas
@@ -289,6 +299,7 @@ export default function Rentals() {
         await onContractIncomeStatusChange(updated, row.status, contractFees);
       }
       await load();
+      setReceiptFor({ income: { ...updated, paidOn: todayISO() }, asked: true });
     } catch (ex) {
       toast.error(ex.message || 'Error al marcar como pagado');
     }
@@ -376,8 +387,8 @@ export default function Rentals() {
           <button onClick={() => setPayConfirm({ open: true, row: r })} title="Marcar como pagado"
             className="btn-ghost p-1.5 text-emerald-600"><CheckCircle2 size={14} /></button>
         )}
-        {r.status === 'pagado' && (
-          <button onClick={() => generateReceiptPDF(r)} title="Descargar recibo PDF"
+        {(r.status === 'pagado' || (r.status === 'parcial' && Number(r.paid) > 0)) && (
+          <button onClick={() => setReceiptFor({ income: r, asked: false })} title="Recibo (descargar o imprimir)"
             className="btn-ghost p-1.5 text-ink-700"><FileDown size={14} /></button>
         )}
         <button onClick={() => onEdit(r)} title="Editar" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
@@ -656,6 +667,12 @@ export default function Rentals() {
         message={payConfirm.row
           ? `¿Confirmar el cobro de ${fmtCur(payConfirm.row.amount, recCurrency(payConfirm.row))} de ${payConfirm.row.tenantName || payConfirm.row.category}?`
           : ''}
+      />
+
+      <ReceiptPrompt
+        income={receiptFor.income}
+        asked={receiptFor.asked}
+        onClose={() => setReceiptFor({ income: null, asked: true })}
       />
 
       <ConfirmModal

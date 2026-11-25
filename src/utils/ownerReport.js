@@ -1,6 +1,6 @@
 import { fmtCur } from './currency.js';
 import { fmtDate } from './format.js';
-import { pdfSafe } from './receipt.js';
+import { pdfSafe, loadLogo } from './receipt.js';
 
 // ============================================================
 // Reporte de gastos de propiedad — PDF para el propietario.
@@ -23,24 +23,6 @@ export const normalizeItems = (items) =>
   }));
 
 export const itemsTotal = (items) => normalizeItems(items).reduce((s, i) => s + i.amount, 0);
-
-// Logo de public/logo.png como data URL (jsPDF no puede leer una URL directa).
-// Si falla (offline, ruta cambiada) el PDF sale igual, con la marca en texto.
-async function loadLogo() {
-  try {
-    const res = await fetch('/logo.png');
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise((resolve) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = () => resolve(null);
-      fr.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
 
 // Construye el documento sin descargarlo (útil para pruebas y vista previa).
 export async function buildOwnerReportDoc(report) {

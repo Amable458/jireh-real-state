@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Home, Receipt, PieChart, Award,
-  Building2, FileBarChart, Users, Database, LogOut, KeyRound, ClipboardList, Globe
+  Building2, FileBarChart, Users, Database, LogOut, KeyRound, ClipboardList, Globe, FileText
 } from 'lucide-react';
 import { useAuth } from '../store/auth.js';
 import { LogoMark } from './Logo.jsx';
@@ -11,6 +11,7 @@ import ChangePasswordModal from './ChangePasswordModal.jsx';
 const items = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/ingresos', label: 'Ingresos', icon: DollarSign, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
+  { to: '/recibos', label: 'Recibos', icon: FileText, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/ventas', label: 'Ingresos por Venta', icon: Home, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/gastos', label: 'Gastos Mensuales', icon: Receipt, roles: ['SuperAdmin', 'Admin', 'Operativo'] },
   { to: '/distribucion', label: 'Distribución de Fondos', icon: PieChart, roles: ['SuperAdmin', 'Admin'] },

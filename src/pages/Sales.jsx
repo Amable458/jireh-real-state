@@ -11,6 +11,7 @@ import { useAuth } from '../store/auth.js';
 import { db, logActivity } from '../db/database.js';
 import { useRealtimeTable } from '../hooks/useRealtimeTable.js';
 import { useSettings } from '../store/settings.js';
+import { toast } from '../store/toast.js';
 import { fmtDate, todayISO } from '../utils/format.js';
 import { fmtCur, recCurrency } from '../utils/currency.js';
 import CurrencyFields from '../components/CurrencyFields.jsx';
@@ -77,6 +78,44 @@ export default function Sales() {
     setOpen(true);
   };
 
+  // ---------- Vínculo con el inventario ----------
+  // Vender marca la propiedad como «vendido» (nunca se borra). Si la venta se
+  // elimina o se pasa a otra propiedad, la anterior vuelve a «disponible»,
+  // salvo que otra venta la siga usando. La página web no se toca.
+  const markSold = async (propertyId) => {
+    const p = props.find((x) => x.id === propertyId);
+    if (p && p.status !== 'vendido') {
+      await db.properties.update(propertyId, { status: 'vendido' });
+      await logActivity(user.sub, user.username, 'property.sold', `id=${propertyId}`);
+    }
+    return p;
+  };
+  const releaseProperty = async (propertyId, saleId) => {
+    if (!propertyId) return;
+    const others = await db.sales.where({ propertyId }).toArray();
+    if (others.some((x) => x.id !== saleId)) return;
+    const p = props.find((x) => x.id === propertyId);
+    if (p && p.status === 'vendido') {
+      await db.properties.update(propertyId, { status: 'disponible' });
+      await logActivity(user.sub, user.username, 'property.unsold', `id=${propertyId}`);
+    }
+  };
+
+  // Al elegir la propiedad, propone su precio y moneda si aún no hay precio
+  const pickProperty = (propertyId) => {
+    const p = props.find((x) => x.id === Number(propertyId));
+    const patch = { propertyId };
+    if (p && !form.price && Number(p.sale) > 0) {
+      patch.price = p.sale;
+      const cur = p.currency === 'USD' ? 'USD' : 'DOP';
+      if (cur !== form.currency) {
+        patch.currency = cur;
+        patch.exchangeRate = cur === 'USD' ? (form.exchangeRate || usdToDop) : '';
+      }
+    }
+    setForm({ ...form, ...patch });
+  };
+
   const save = async (e) => {
     e.preventDefault();
     const property = props.find((p) => p.id === Number(form.propertyId));
@@ -118,6 +157,19 @@ export default function Sales() {
       }
       // Genera/actualiza las cuentas por pagar a colegas
       await syncSaleColegaPayables({ ...payload, id: saleId });
+      // Inventario: la propiedad vendida queda marcada; la anterior se libera
+      const prevPropertyId = editId ? rows.find((r) => r.id === editId)?.propertyId ?? null : null;
+      try {
+        if (payload.propertyId) {
+          const p = await markSold(payload.propertyId);
+          if (p && p.status !== 'vendido') {
+            toast.success(`«${p.name}» quedó como Vendida en el inventario. Si está publicada en la web, sigue visible hasta que la quites en Propiedades en la web.`);
+          }
+        }
+        if (prevPropertyId && prevPropertyId !== payload.propertyId) await releaseProperty(prevPropertyId, saleId);
+      } catch (ex) {
+        toast.error(`La venta se guardó, pero no se pudo actualizar el estado de la propiedad: ${ex?.message || ex}`);
+      }
       setOpen(false);
       await load();
     } catch (ex) {
@@ -135,6 +187,10 @@ export default function Sales() {
     const row = rows.find((r) => r.id === id);
     await db.sales.delete(id);
     if (row) await removeSaleColegaPayables(row);
+    if (row?.propertyId) {
+      try { await releaseProperty(row.propertyId, row.id); }
+      catch (ex) { toast.error(`No se pudo devolver la propiedad a Disponible: ${ex?.message || ex}`); }
+    }
     await logActivity(user.sub, user.username, 'sale.delete', `id=${id}`);
     load();
   };
@@ -254,10 +310,17 @@ export default function Sales() {
           </div>
           <div>
             <label className="label">Propiedad</label>
-            <select className="input" value={form.propertyId} onChange={(e) => setForm({ ...form, propertyId: e.target.value })}>
-              <option value="">— seleccione —</option>
-              {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <select className="input" value={form.propertyId} onChange={(e) => pickProperty(e.target.value)}>
+              <option value="">— seleccione del inventario —</option>
+              {[...props]
+                .sort((a, b) => (a.status === 'vendido') - (b.status === 'vendido') || String(a.name).localeCompare(String(b.name), 'es'))
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.status === 'vendido' && String(p.id) !== String(form.propertyId) ? ' · ya vendida' : ''}
+                  </option>
+                ))}
             </select>
+            <p className="text-xs text-ink-500 mt-1">Al guardar, la propiedad queda como <b>Vendida</b> en el inventario (no se borra ni se quita de la web).</p>
           </div>
           <div>
             <label className="label">Comprador</label>

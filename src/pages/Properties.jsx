@@ -15,7 +15,10 @@ import { deleteTenantCharges, tenantBillingBlocker } from '../utils/tenantCharge
 import CurrencyFields from '../components/CurrencyFields.jsx';
 import MoneyInput from '../components/MoneyInput.jsx';
 
-const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', currency: 'DOP', rent: '', sale: '', status: 'disponible', notes: '' });
+const propEmpty = () => ({ name: '', type: 'Apartamento', address: '', owner: '', currency: 'DOP', rent: '', sale: '', status: 'disponible', notes: '', exclusive: false, exclusiveUntil: '' });
+
+const STATUS_LABEL = { disponible: 'Disponible', rentado: 'Rentada', vendido: 'Vendida' };
+const STATUS_BADGE = { disponible: 'badge-success', rentado: 'badge-info', vendido: 'badge-neutral' };
 const tenantEmpty = () => ({
   name: '', phone: '', email: '', identification: '', propertyId: '',
   contractStart: todayISO(), contractEnd: '', monthlyRent: '', notes: '',
@@ -41,6 +44,7 @@ export default function Properties() {
   const [pEdit, setPEdit] = useState(null);
   const [pErr, setPErr] = useState('');
   const [pSaving, setPSaving] = useState(false);
+  const [pStatusFilter, setPStatusFilter] = useState('all'); // all | disponible | rentado | vendido
 
   const [tOpen, setTOpen] = useState(false);
   const [tForm, setTForm] = useState(tenantEmpty());
@@ -87,7 +91,9 @@ export default function Properties() {
       owner: pForm.owner || '',
       currency,
       rent: Number(pForm.rent) || 0, sale: Number(pForm.sale) || 0,
-      status: pForm.status, notes: pForm.notes
+      status: pForm.status, notes: pForm.notes,
+      exclusive: !!pForm.exclusive,
+      exclusiveUntil: pForm.exclusive && pForm.exclusiveUntil ? pForm.exclusiveUntil : null
     };
     setPSaving(true); setPErr('');
     // Antes de correr la migración la columna currency no existe: las
@@ -96,6 +102,11 @@ export default function Properties() {
       try {
         return pEdit ? await db.properties.update(pEdit, data) : await db.properties.add(data);
       } catch (ex) {
+        // Sin la migración de exclusividad: guarda igual si no se marcó exclusiva
+        if (!data.exclusive && /exclusive/i.test(ex?.message || '')) {
+          const { exclusive: _e, exclusiveUntil: _u, ...sinExcl } = data;
+          return pEdit ? db.properties.update(pEdit, sinExcl) : db.properties.add(sinExcl);
+        }
         if (currency === 'DOP' && /currency/i.test(ex?.message || '')) {
           const { currency: _c, ...sinMoneda } = data;
           return pEdit ? db.properties.update(pEdit, sinMoneda) : db.properties.add(sinMoneda);
@@ -114,9 +125,11 @@ export default function Properties() {
       setPOpen(false); load();
     } catch (ex) {
       const msg = ex?.message || 'Error al guardar';
-      const hint = /currency|schema cache|column/i.test(msg)
-        ? ' — Falta ejecutar la migración supabase/migration_propiedades_moneda.sql en el SQL Editor de Supabase.'
-        : '';
+      const hint = /exclusive/i.test(msg)
+        ? ' — Falta ejecutar la migración supabase/migration_recibos_ventas.sql en el SQL Editor de Supabase.'
+        : /currency|schema cache|column/i.test(msg)
+          ? ' — Falta ejecutar la migración supabase/migration_propiedades_moneda.sql en el SQL Editor de Supabase.'
+          : '';
       setPErr(msg + hint);
     } finally {
       setPSaving(false);
@@ -225,7 +238,16 @@ export default function Properties() {
     { key: 'owner', label: 'Propietario', render: (r) => r.owner || '—' },
     { key: 'rent', label: 'Renta', render: (r) => fmtCur(r.rent, r.currency === 'USD' ? 'USD' : 'DOP') },
     { key: 'sale', label: 'Venta', render: (r) => fmtCur(r.sale, r.currency === 'USD' ? 'USD' : 'DOP') },
-    { key: 'status', label: 'Estado', render: (r) => <span className="badge-info">{r.status}</span> },
+    { key: 'status', label: 'Estado', render: (r) => <span className={STATUS_BADGE[r.status] || 'badge-info'}>{STATUS_LABEL[r.status] || r.status || '—'}</span> },
+    { key: 'exclusive', label: 'Exclusiva', accessor: (r) => (r.exclusive ? (r.exclusiveUntil || '9999') : ''), render: (r) => {
+      if (!r.exclusive) return <span className="text-ink-300">—</span>;
+      const vencida = r.exclusiveUntil && r.exclusiveUntil < todayISO();
+      return (
+        <span className={vencida ? 'badge-danger' : 'badge-warning'} title={vencida ? 'Exclusividad vencida' : 'Propiedad en exclusiva'}>
+          {r.exclusiveUntil ? `${vencida ? 'Vencida' : 'Hasta'} ${fmtDate(r.exclusiveUntil)}` : 'Sí'}
+        </span>
+      );
+    } },
     { key: 'actions', label: '', sortable: false, render: (r) => (
       <div className="flex gap-1 justify-end">
         <button className="btn-ghost p-1.5" onClick={() => editProperty(r)}><Edit2 size={14} /></button>
@@ -255,7 +277,7 @@ export default function Properties() {
   const editProperty = (r) => {
     setPEdit(r.id);
     setPErr('');
-    setPForm({ ...propEmpty(), ...r, currency: r.currency === 'USD' ? 'USD' : 'DOP', rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '' });
+    setPForm({ ...propEmpty(), ...r, currency: r.currency === 'USD' ? 'USD' : 'DOP', rent: r.rent ?? '', sale: r.sale ?? '', owner: r.owner ?? '', exclusive: !!r.exclusive, exclusiveUntil: r.exclusiveUntil || '' });
     setPOpen(true);
   };
 
@@ -430,7 +452,26 @@ export default function Properties() {
           )}
         </div>
 
-        {tab === 'properties' && <DataTable columns={propCols} rows={properties} emptyText="Sin propiedades registradas" />}
+        {tab === 'properties' && (
+          <>
+            <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Filtrar por estado">
+              {[['all', 'Todas'], ['disponible', 'Disponibles'], ['rentado', 'Rentadas'], ['vendido', 'Vendidas']].map(([v, l]) => {
+                const n = v === 'all' ? properties.length : properties.filter((p) => p.status === v).length;
+                return (
+                  <button key={v} type="button" onClick={() => setPStatusFilter(v)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${pStatusFilter === v ? 'bg-ink-900 text-white border-ink-900' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}>
+                    {l} <span className="opacity-60 tnum">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <DataTable
+              columns={propCols}
+              rows={pStatusFilter === 'all' ? properties : properties.filter((p) => p.status === pStatusFilter)}
+              emptyText="Sin propiedades registradas"
+            />
+          </>
+        )}
         {tab === 'tenants' && <DataTable columns={tenantCols} rows={tenants} emptyText="Sin inquilinos registrados" />}
         {tab === 'agents' && <DataTable columns={agentCols} rows={agents} emptyText="Sin agentes registrados" />}
       </div>
@@ -474,6 +515,18 @@ export default function Properties() {
             </div>
             <div><label className="label">Renta sugerida ({pForm.currency === 'USD' ? 'US$' : 'RD$'})</label><MoneyInput className="input" value={pForm.rent} onChange={(v) => setPForm({ ...pForm, rent: v })} /></div>
             <div><label className="label">Precio venta ({pForm.currency === 'USD' ? 'US$' : 'RD$'})</label><MoneyInput className="input" value={pForm.sale} onChange={(v) => setPForm({ ...pForm, sale: v })} /></div>
+          </div>
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <label className="flex items-center gap-2 text-sm text-ink-700 py-2">
+              <input type="checkbox" checked={!!pForm.exclusive} onChange={(e) => setPForm({ ...pForm, exclusive: e.target.checked, exclusiveUntil: e.target.checked ? pForm.exclusiveUntil : '' })} />
+              La tenemos en <b>exclusiva</b>
+            </label>
+            {pForm.exclusive && (
+              <div>
+                <label className="label">Exclusividad hasta (opcional)</label>
+                <input type="date" className="input" value={pForm.exclusiveUntil || ''} onChange={(e) => setPForm({ ...pForm, exclusiveUntil: e.target.value })} />
+              </div>
+            )}
           </div>
           <div className="md:col-span-2"><label className="label">Notas</label><textarea className="input" rows={2} value={pForm.notes} onChange={(e) => setPForm({ ...pForm, notes: e.target.value })} /></div>
         </form>

@@ -4,8 +4,11 @@ import { setSessionToken, getSessionToken } from './sessionToken.js';
 // Tablas del sistema
 const TABLES = [
   'users', 'rentals', 'sales', 'expenses', 'properties', 'tenants', 'agents',
-  'distributionConfig', 'activityLog', 'settings', 'ownerReports', 'webProps'
+  'distributionConfig', 'activityLog', 'settings', 'ownerReports', 'webProps', 'receipts'
 ];
+// Tablas que pueden no existir todavía (su migración aún no se corrió):
+// el respaldo las salta en vez de fallar entero.
+const OPTIONAL_TABLES = new Set(['receipts']);
 const STRING_PK_TABLES = new Set(['distributionConfig', 'settings']);
 
 const pkOf = (table) => (STRING_PK_TABLES.has(table) ? 'key' : 'id');
@@ -350,6 +353,8 @@ export async function exportAll(token) {
   for (const t of TABLES) {
     if (t === 'users') {
       out.data.users = token ? await rpcExportUsers(token) : [];
+    } else if (OPTIONAL_TABLES.has(t)) {
+      try { out.data[t] = await db[t].toArray(); } catch { /* migración pendiente */ }
     } else {
       out.data[t] = await db[t].toArray();
     }
@@ -373,7 +378,7 @@ export function inspectBackup(payload) {
   for (const t of TABLES) {
     const v = payload.data[t];
     if (v === undefined) {
-      if (!NON_RESTORABLE.has(t)) warnings.push(`"${t}" no viene en el archivo: se deja como está.`);
+      if (!NON_RESTORABLE.has(t) && !OPTIONAL_TABLES.has(t)) warnings.push(`"${t}" no viene en el archivo: se deja como está.`);
       continue;
     }
     if (!Array.isArray(v)) { errors.push(`"${t}" no es una lista de registros.`); continue; }

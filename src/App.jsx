@@ -11,6 +11,7 @@ import Login from './pages/Login.jsx';
 // Code splitting: cada ruta protegida se descarga bajo demanda
 const Dashboard    = lazy(() => import('./pages/Dashboard.jsx'));
 const Rentals      = lazy(() => import('./pages/Rentals.jsx'));
+const Receipts     = lazy(() => import('./pages/Receipts.jsx'));
 const Sales        = lazy(() => import('./pages/Sales.jsx'));
 const Expenses     = lazy(() => import('./pages/Expenses.jsx'));
 const Distribution = lazy(() => import('./pages/Distribution.jsx'));
@@ -53,6 +54,7 @@ export default function App() {
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<Suspense fallback={<PageFallback />}><Dashboard /></Suspense>} />
           <Route path="/ingresos" element={<Suspense fallback={<PageFallback />}><Rentals /></Suspense>} />
+          <Route path="/recibos" element={<Suspense fallback={<PageFallback />}><Receipts /></Suspense>} />
           <Route path="/ventas" element={<Suspense fallback={<PageFallback />}><Sales /></Suspense>} />
           <Route path="/gastos" element={<Suspense fallback={<PageFallback />}><Expenses /></Suspense>} />
           <Route path="/bonificaciones" element={<Suspense fallback={<PageFallback />}><Bonuses /></Suspense>} />
