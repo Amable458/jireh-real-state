@@ -42,6 +42,9 @@ where year = 2026 and month = 10
   and coalesce(q1, 0) > 0 and coalesce(q2, 0) > 0
   and "revisarQuincenas" = false;
 
+-- Que la API vea las columnas nuevas de inmediato
+notify pgrst, 'reload schema';
+
 do $$
 declare n_rev int; n_par int;
 begin
